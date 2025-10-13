@@ -1,0 +1,7 @@
+aiogram==3.0.0
+requests==2.31.0
+matplotlib==3.7.1
+SQLAlchemy==2.0.20
+asyncio==3.4.3
+python-decouple==3.8
+pytonlib>=0.0.19
