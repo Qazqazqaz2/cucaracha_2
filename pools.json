@@ -1,0 +1,23 @@
+{
+    "pools": {
+      "TON-USDT": {
+        "address": "EQA-X_yo3fzzbDbJ_0bzFWKqtRuZFIRa1sJsveZJ1YpViO3r",
+        "dex": "DeDust",
+        "from_token": "TON",
+        "to_token": "USDT",
+        "to_token_address": "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs",
+        "from_decimals": 9,
+        "to_decimals": 6,
+        "jetton_master_to": "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+      },
+      "TON-NOT": {
+        "address": "EQCkRwW0u-MP1Q8ya99lQr8BxJ68SAsxqy7Z-5nTpBqCj81j",
+        "dex": "StonFi",
+        "from_token": "TON",
+        "to_token": "NOT",
+        "from_decimals": 9,
+        "to_decimals": 9,
+        "jetton_master_to": "EQB-MPwrd1G6WKNkLz_VnV6WqBDd142KMQv-g1O-8QUA3728"
+      }
+    }
+}

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TON Обменник</title>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #0088cc; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #006699; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #wallet { margin: 15px 0; padding: 15px; background: #e8f5e8; border-radius: 5px; border: 1px solid #4caf50; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 5px; }
+        .success { background: #e8f5e8; color: #2e7d32; border: 1px solid #4caf50; }
+        .error { background: #ffebee; color: #c62828; border: 1px solid #f44336; }
+        .hidden { display: none; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .balance { color: #666; font-size: 0.9em; }
+        .loading { color: #0088cc; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💰 TON Обменник</h1>
+        
+        <div id="wallet" class="hidden"></div>
+        <button id="connectBtn">🔗 Подключить кошелёк</button>
+
+        <form id="swapForm" class="hidden">
+            <div class="form-group">
+                <label>Отдаете:</label>
+                <select id="fromToken">
+                    <option value="TON">TON</option>
+                    <option value="USDT">USDT</option>
+                    <option value="NOT">NOT</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Получаете:</label>
+                <select id="toToken">
+                    <option value="USDT">USDT</option>
+                    <option value="NOT">NOT</option>
+                    <option value="TON">TON</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Сумма:</label>
+                <input type="number" id="amount" placeholder="0.0" step="0.01" min="0">
+                <div id="balance" class="balance"></div>
+            </div>
+            
+            <button type="button" id="getQuote">📊 Получить курс</button>
+            <div id="quote"></div>
+            <button type="submit" id="swapBtn">🔄 Обменять</button>
+        </form>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        let currentWallet = null;
+        let tonConnectUI = null;
+
+        // Инициализация TON Connect
+        function initTonConnect() {
+            const manifestUrl = "https://raw.githubusercontent.com/Qazqazqaz2/cucaracha_2/main/tonconnect-manifest.json";
+            
+            tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+                manifestUrl: manifestUrl,
+                buttonRootId: 'connectBtn'
+            });
+
+            // Восстановление подключения
+            tonConnectUI.connectionRestored.then(() => {
+                checkConnection();
+            });
+
+            // Слушатель изменения кошелька
+            tonConnectUI.onStatusChange(wallet => {
+                currentWallet = wallet;
+                checkConnection();
+            });
+        }
+
+        function checkConnection() {
+            const wallet = tonConnectUI.account;
+            if (wallet) {
+                currentWallet = wallet;
+                const shortAddress = wallet.address.slice(0, 8) + '...' + wallet.address.slice(-8);
+                document.getElementById('wallet').innerHTML = `✅ Подключён: ${shortAddress}`;
+                document.getElementById('wallet').classList.remove('hidden');
+                document.getElementById('connectBtn').classList.add('hidden');
+                document.getElementById('swapForm').classList.remove('hidden');
+                updateBalance();
+            } else {
+                document.getElementById('wallet').classList.add('hidden');
+                document.getElementById('connectBtn').classList.remove('hidden');
+                document.getElementById('swapForm').classList.add('hidden');
+            }
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                await tonConnectUI.openModal();
+            } catch (error) {
+                console.error('Connection error:', error);
+                showResult('Ошибка подключения: ' + error.message, 'error');
+            }
+        });
+
+        async function updateBalance() {
+            if (!currentWallet) return;
+            
+            const walletAddr = currentWallet.address;
+            const fromToken = document.getElementById('fromToken').value;
+            
+            try {
+                const res = await fetch('/balance', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({wallet_address: walletAddr, token: fromToken})
+                });
+                const data = await res.json();
+                
+                const balanceDiv = document.getElementById('balance');
+                if (data.error) {
+                    balanceDiv.innerHTML = `Ошибка: ${data.error}`;
+                } else {
+                    balanceDiv.innerHTML = `Баланс: ${data.balance.toFixed(4)} ${fromToken}`;
+                }
+            } catch (error) {
+                console.error('Balance error:', error);
+            }
+        }
+
+        document.getElementById('getQuote').addEventListener('click', async () => {
+            const fromToken = document.getElementById('fromToken').value;
+            const toToken = document.getElementById('toToken').value;
+            const amount = document.getElementById('amount').value;
+
+            if (!amount || amount <= 0) {
+                showResult('Введите сумму для обмена', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/quote', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        from_token: fromToken, 
+                        to_token: toToken, 
+                        amount: amount
+                    })
+                });
+                const data = await res.json();
+                
+                const quoteDiv = document.getElementById('quote');
+                if (data.error) {
+                    quoteDiv.innerHTML = `<div class="error">Ошибка: ${data.error}</div>`;
+                } else {
+                    quoteDiv.innerHTML = `
+                        <div class="success">
+                            <strong>Вы получите: ${data.formatted}</strong>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Quote error:', error);
+                showResult('Ошибка получения курса', 'error');
+            }
+        });
+
+        document.getElementById('swapForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentWallet) {
+                showResult('Сначала подключите кошелёк', 'error');
+                return;
+            }
+        
+            const fromToken = document.getElementById('fromToken').value;
+            const toToken = document.getElementById('toToken').value;
+            const amount = document.getElementById('amount').value;
+        
+            if (!amount || amount <= 0) {
+                showResult('Введите сумму для обмена', 'error');
+                return;
+            }
+        
+            try {
+                showResult('Подготовка транзакции...', 'loading');
+                
+                const res = await fetch('/swap', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        wallet_address: currentWallet.address,
+                        from_token: fromToken,
+                        to_token: toToken,
+                        amount: amount
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    showResult('Ошибка: ' + data.error, 'error');
+                    return;
+                }
+            
+                showResult('Подтвердите транзакцию в кошельке...', 'loading');
+                
+                // Поддержка двух форматов ответа
+                let message;
+                if (data.messages && Array.isArray(data.messages)) {
+                    // Новый формат
+                    message = data.messages[0];
+                } else {
+                    // Старый формат
+                    message = {
+                        address: data.to_address,
+                        amount: data.amount,
+                        payload: data.payload
+                    };
+                }
+            
+                const transaction = {
+                    validUntil: data.validUntil || Math.floor(Date.now() / 1000) + 300,
+                    messages: [message]
+                };
+            
+                try {
+                    const result = await tonConnectUI.sendTransaction(transaction);
+                    showResult('Своп выполнен успешно!', 'success');
+                    console.log("Transaction sent:", result);
+                    
+                    setTimeout(updateBalance, 3000);
+                } catch (txError) {
+                    console.error("Transaction failed:", txError);
+                    if (txError.message?.includes('rejected') || txError.message?.includes('declined')) {
+                        showResult('Транзакция отменена', 'error');
+                    } else {
+                        showResult('Ошибка: ' + txError.message, 'error');
+                    }
+                }
+            
+            } catch (error) {
+                console.error('Swap error:', error);
+                showResult('Ошибка: ' + error.message, 'error');
+            }
+        });
+    
+        function showResult(message, type = '') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = type;
+        }
+    
+        // Обновляем баланс при смене токена
+        document.getElementById('fromToken').addEventListener('change', updateBalance);
+    
+        // Инициализация
+        initTonConnect();
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = type ? (type === 'success' ? 'success' : type === 'loading' ? 'loading' : 'error') : '';
+        }
+
+        // Обновляем баланс при смене токена
+        document.getElementById('fromToken').addEventListener('change', updateBalance);
+
+        // Инициализация при загрузке
+        initTonConnect();
+    </script>
+</body>
+</html>
