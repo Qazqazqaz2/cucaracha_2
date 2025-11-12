@@ -1,8 +1,5 @@
 aiogram==3.0.0
+Flask==2.3.3
 requests==2.31.0
+pytoniq-core==0.1.6
 matplotlib==3.7.1
-SQLAlchemy==2.0.20
-python-decouple==3.8
-pytonlib>=0.0.19
-aiohttp>=3.8.0
-python-telegram-bot>=20.0
