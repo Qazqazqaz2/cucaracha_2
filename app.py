@@ -7,19 +7,27 @@ import base64
 import requests
 from pytoniq_core import Address, Cell
 from pytoniq_core.boc import Builder
+import asyncio
+import threading
+from datetime import datetime, timedelta
+import traceback
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
-POOLS_FILE = 'pools.json'
+POOLS_FILE = os.environ.get("POOLS_FILE", "pools.json")
+ORDERS_FILE = os.environ.get("ORDERS_FILE", "orders.json")
 
 # Конфиг
-TESTNET = False
-BASE_URL = "https://toncenter.com/api/v2"
-API_KEY = "256dd2ae98d77eded3d35bd4effd6c21afd92fb4d6c602ab9e9a9468872cd03a"
+TESTNET = os.environ.get("TESTNET", "False") == "True"
+BASE_URL = os.environ.get("BASE_URL", "https://toncenter.com/api/v2")
+API_KEY = os.environ.get("API_KEY")
+ORDER_WALLET_MNEMONIC = os.environ.get("ORDER_WALLET_MNEMONIC")
 
 # ВАЖНО: Адреса и газ
-DEDUST_NATIVE_VAULT = "EQDa4VOnTYlLvDJ0gZjNYm5PXfSmmtL6Vs6A_CZEtXCNICq_"   # Актуальный Native Vault (mainnet, ноябрь 2025)
-DEDUST_FACTORY = "EQBfBWT7X2BHg9tXAxzhz2aKiNTU1tpt5NsiK0uSDW_YAJ67"
-STONFI_PROXY_TON = "EQCM3B12QK1e4yZSf8GtBRT0aLMNyEsBc_DhVfRRtOEffLez"
+DEDUST_NATIVE_VAULT = os.environ.get("DEDUST_NATIVE_VAULT")
+DEDUST_FACTORY = os.environ.get("DEDUST_FACTORY")
+STONFI_PROXY_TON = os.environ.get("STONFI_PROXY_TON")
 
 # Заменяем to_nano на ручную конверсию
 def to_nano(amount: float, currency: str = "ton") -> int:
@@ -27,32 +35,49 @@ def to_nano(amount: float, currency: str = "ton") -> int:
         raise ValueError("Only TON supported")
     return int(amount * 1_000_000_000)
 
-DEDUST_GAS_AMOUNT = to_nano(0.3)   # Увеличено для стабильности
+DEDUST_GAS_AMOUNT = to_nano(0.3)
 STONFI_GAS_AMOUNT = to_nano(0.25)
 
 # TON как токен (addr_none)
-TON_AS_TOKEN = "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"
+TON_AS_TOKEN = os.environ.get("TON_AS_TOKEN")
 
 # SERVICE FEE: 0.25% для DeDust (стандарт для TON-USDT)
-SERVICE_FEE_RATE = 0.0025  # 0.25%
+SERVICE_FEE_RATE = float(os.environ.get("SERVICE_FEE_RATE", 0.0025))
+
+# Настройки по умолчанию
+DEFAULT_SLIPPAGE = 1.0  # 1% по умолчанию
+
+# Глобальные переменные для кошелька ордеров
+# В реальном приложении здесь должен быть кошелек с мнемоникой
+# Для демонстрации используем хардкодированный адрес
+order_wallet_address = "UQD1V6ZNou__gvGZ9b-c69g9n1aXvSN4HJG1avp-AHDSRueL"
 
 def load_pools():
     if os.path.exists(POOLS_FILE):
         with open(POOLS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f).get('pools', {})
-    # Fallback mock для TON-USDT (если файл пустой)
     return {
         "TON-USDT": {
-            "address": "EQCsgKK0mn7qY30BE8ACZAlfXJ7w5DJq0r9IX49sWg-z-opY",  # Актуальный DeDust пул (volatile)
+            "address": "EQCsgKK0mn7qY30BE8ACZAlfXJ7w5DJq0r9IX49sWg-z-opY",
             "dex": "DeDust",
             "from_token": "TON",
             "to_token": "USDT",
             "from_decimals": 9,
             "to_decimals": 6,
             "from_token_address": TON_AS_TOKEN,
-            "to_token_address": "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+            "to_token_address": "EQCxE6mUtQJKFnGfaROt1lZbDiiX1kCixRv7Nw2Id_sDs"
         }
     }
+
+def load_orders():
+    if os.path.exists(ORDERS_FILE):
+        with open(ORDERS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {"orders": []}
+
+def save_orders(orders_data):
+    with open(ORDERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(orders_data, f, indent=2)
 
 pools = load_pools()
 
@@ -111,6 +136,17 @@ def get_balance(address: str, decimals=9):
         print(f"Balance error: {e}")
         return 0
 
+def get_current_price(pool_addr: str):
+    """Получает текущую цену из пула"""
+    try:
+        reserve_from, reserve_to = get_pool_reserves(pool_addr)
+        if reserve_from > 0 and reserve_to > 0:
+            return reserve_to / reserve_from
+        return 0
+    except Exception as e:
+        print(f"Price error: {e}")
+        return 0
+
 def get_pool_reserves(pool_addr: str):
     """Получает резервы пула DEX"""
     try:
@@ -120,7 +156,7 @@ def get_pool_reserves(pool_addr: str):
             'method': 'get_reserves',
             'stack': []
         })
-        print("RES", result)
+        
         if not result or result.get('exit_code', 1) != 0:
             return 1000000, 2000000
 
@@ -139,7 +175,6 @@ def get_pool_reserves(pool_addr: str):
                         continue
 
         reserves = sorted(reserves, reverse=True)[:2][::-1]
-        print(reserves)
 
         if len(reserves) >= 2:
             return reserves[-1], reserves[0]
@@ -153,7 +188,6 @@ def get_pool_reserves(pool_addr: str):
 def get_expected_output(pool_addr: str, amount_nano: int, from_token_addr: str):
     """Использует get_expected_outputs с исправленным стеком"""
     try:
-        # Создаем ячейку с адресом токена
         token_builder = Builder()
         token_builder.store_address(Address(from_token_addr))
         token_cell = token_builder.end_cell()
@@ -192,7 +226,6 @@ def calculate_quote(from_amount: float, pool: dict):
             print(f"[QUOTE] Zero reserves: from={reserve_from}, to={reserve_to}")
             return 0, "Ошибка: нулевые резервы в пуле"
         
-        # Комиссия пула DeDust + наша
         pool_fee = 0.003
         service_fee = SERVICE_FEE_RATE
         total_fee = service_fee
@@ -259,16 +292,14 @@ def create_swap_payload(pool_address: str, user_address: str, amount: int, min_o
     query_id = generate_query_id()
 
     if dex.upper() == "DEDUST" and from_token == "TON":
-        # SwapParams
         params = Builder()
-        params.store_uint(int(time.time()) + 300, 32)  # deadline
-        params.store_address(user_addr)               # recipient
-        params.store_address(None)                    # referral
-        params.store_maybe_ref(None)                  # fulfill
-        params.store_maybe_ref(None)                  # reject
+        params.store_uint(int(time.time()) + 300, 32)
+        params.store_address(user_addr)
+        params.store_address(None)
+        params.store_maybe_ref(None)
+        params.store_maybe_ref(None)
         params_cell = params.end_cell()
 
-        # Main swap
         cell = Builder()
         cell.store_uint(0xea06185d, 32)
         cell.store_uint(query_id, 64)
@@ -331,9 +362,124 @@ def create_swap_payload(pool_address: str, user_address: str, amount: int, min_o
     print(f"[DEBUG] Generated payload BOC: {boc[:100]}...")
     return boc
 
+def create_deposit_payload(order_id: str):
+    """Создает payload для депозита на кошелек ордеров"""
+    # Простой transfer без дополнительных данных
+    # В реальном приложении здесь можно добавить комментарий с order_id
+    builder = Builder()
+    builder.store_uint(0, 32)  # op=0 для простого перевода
+    builder.store_uint(0, 64)  # query_id
+    return base64.b64encode(builder.end_cell().to_boc()).decode('utf-8')
+
+def order_is_funded(order):
+    '''Проверить, достаточно ли средств на ордер-кошельке для ордера'''
+    if order.get('status') != 'unfunded':
+        return False
+    
+    # Проверяем баланс кошелька ордеров
+    balance = get_balance(order_wallet_address)
+    required_amount = order['amount'] + 0.1  # +0.1 TON для газа
+    
+    return balance >= required_amount
+
+def check_orders_funding():
+    '''Проверка "поступили ли нужные средства для ордеров"'''
+    try:
+        orders_data = load_orders()
+        updated = False
+        for order in orders_data['orders']:
+            if order.get('status') == 'unfunded' and order_is_funded(order):
+                order['status'] = 'active'
+                order['funded_at'] = datetime.now().isoformat()
+                updated = True
+                print(f"[ORDER] Ордер {order['id']} поступление средств подтверждено — активирован!")
+        if updated:
+            save_orders(orders_data)
+    except Exception as e:
+        print(f"[ORDER FUNDING] Error: {e}")
+        traceback.print_exc()
+
+def check_orders_execution():
+    """Проверяет выполнение условий для ордеров"""
+    try:
+        orders_data = load_orders()
+        active_orders = [o for o in orders_data['orders'] if o['status'] == 'active']
+        
+        if not active_orders:
+            return
+        
+        # Получаем текущие цены для всех пар
+        current_prices = {}
+        for pool_name, pool in pools.items():
+            current_prices[pool_name] = get_current_price(pool['address'])
+        
+        updated = False
+        for order in active_orders:
+            pair = order['pair']
+            if pair not in current_prices or current_prices[pair] == 0:
+                continue
+                
+            current_price = current_prices[pair]
+            entry_price = order['entry_price']
+            stop_loss = order.get('stop_loss')
+            take_profit = order.get('take_profit')
+            
+            # Проверяем условия исполнения
+            should_execute = False
+            execution_type = ""
+            
+            if order['type'] == 'long':
+                if stop_loss and current_price <= stop_loss:
+                    should_execute = True
+                    execution_type = "STOP_LOSS"
+                elif take_profit and current_price >= take_profit:
+                    should_execute = True
+                    execution_type = "TAKE_PROFIT"
+            elif order['type'] == 'short':
+                if stop_loss and current_price >= stop_loss:
+                    should_execute = True
+                    execution_type = "STOP_LOSS"
+                elif take_profit and current_price <= take_profit:
+                    should_execute = True
+                    execution_type = "TAKE_PROFIT"
+            
+            if should_execute:
+                order['status'] = 'executed'
+                order['executed_at'] = datetime.now().isoformat()
+                order['execution_type'] = execution_type
+                order['execution_price'] = current_price
+                updated = True
+                print(f"[ORDER] Executed {order['id']} at price {current_price} ({execution_type})")
+        
+        if updated:
+            save_orders(orders_data)
+            
+    except Exception as e:
+        print(f"[ORDER CHECK] Error: {e}")
+        traceback.print_exc()
+
+# Запускаем проверку ордеров в фоне
+def start_order_checker():
+    def checker_loop():
+        while True:
+            try:
+                check_orders_funding()  # Проверить funding, после этого — исполнение
+                check_orders_execution()
+                time.sleep(30)
+            except Exception as e:
+                print(f"[ORDER CHECKER] Error: {e}")
+                time.sleep(60)
+    
+    checker_thread = threading.Thread(target=checker_loop)
+    checker_thread.daemon = True
+    checker_thread.start()
+
+# Запускаем проверку ордеров при старте
+start_order_checker()
+
 @app.route('/')
 def index():
-    return render_template('index.html', pools=pools)
+    return render_template('index.html', pools=pools, order_wallet_address=order_wallet_address)
 
 @app.route('/balance', methods=['POST'])
 def balance():
@@ -356,6 +502,7 @@ def quote():
     from_token = data.get('from_token')
     to_token = data.get('to_token')
     amount = float(data.get('amount', 0))
+    slippage = float(data.get('slippage', DEFAULT_SLIPPAGE))
 
     if amount <= 0:
         return jsonify({'error': 'Введите положительную сумму'}), 400
@@ -380,14 +527,20 @@ def quote():
         
         service_fee = amount * SERVICE_FEE_RATE
         
+        min_output = output * (1 - slippage / 100)
+        
         return jsonify({
             'quote': output, 
-            'formatted': formatted, 
+            'formatted': formatted,
+            'min_output': min_output,
+            'min_output_formatted': f"{min_output:.6f} {pool['to_token']}",
             'pool_address': pool['address'],
+            'slippage': slippage,
             'fees': {
                 'service_fee': service_fee,
                 'service_rate': '0.25%',
                 'pool_fee': '0.3%',
+                'slippage': f'{slippage}%',
                 'network_gas': '0.1-0.3 TON'
             }
         })
@@ -401,6 +554,7 @@ def swap():
     from_token = data.get('from_token')
     to_token = data.get('to_token')
     amount = float(data.get('amount', 0))
+    slippage = float(data.get('slippage', DEFAULT_SLIPPAGE))
 
     if amount <= 0:
         return jsonify({'error': 'Invalid amount'}), 400
@@ -421,7 +575,8 @@ def swap():
             raise ValueError("Недостаточная ликвидность")
         
         expected_out_nano = int(output * 10**pool['to_decimals'])
-        min_out_nano = int(expected_out_nano * 0.99)
+        min_out_nano = int(expected_out_nano * (1 - slippage / 100))
+        
         service_fee = amount * SERVICE_FEE_RATE
 
         if from_token == "TON":
@@ -447,7 +602,7 @@ def swap():
             from_token=from_token
         )
         
-        print(f"[SUCCESS] Swap ready: {amount} {from_token} → ~{output:.6f} {to_token}")
+        print(f"[SUCCESS] Swap ready: {amount} {from_token} → ~{output:.6f} {to_token} (slippage: {slippage}%)")
         
         return jsonify({
             'validUntil': int(time.time()) + 300,
@@ -462,6 +617,7 @@ def swap():
                     'input': f'{amount} {from_token}',
                     'output_expected': f'{output:.6f} {to_token}',
                     'min_output': f'{min_out_nano / 10**pool["to_decimals"]:.6f} {to_token}',
+                    'slippage': f'{slippage}%',
                     'service_fee': f'{service_fee:.6f} {from_token} (0.25%)',
                     'pool_fee': f'{amount * 0.003:.6f} {from_token} (0.3%)',
                     'network_gas': f'{gas / 1e9:.3f} TON',
@@ -470,13 +626,187 @@ def swap():
             'debug': {
                 'expected_out': output,
                 'min_out': min_out_nano / 10**pool['to_decimals'],
-                'gas': gas / 1e9
+                'gas': gas / 1e9,
+                'slippage': slippage
             }
         })
 
     except Exception as e:
         print(f"[ERROR] Swap failed: {e}")
         import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/orders', methods=['GET'])
+def get_orders():
+    """Получить список всех ордеров"""
+    try:
+        orders_data = load_orders()
+        return jsonify(orders_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/orders', methods=['POST'])
+def create_order():
+    """Создать новый ордер"""
+    data = request.json
+    
+    try:
+        order_type = data.get('type')  # 'long' или 'short'
+        pair = data.get('pair')  # 'TON-USDT'
+        amount = float(data.get('amount', 0))
+        entry_price = float(data.get('entry_price', 0))
+        stop_loss = data.get('stop_loss')
+        take_profit = data.get('take_profit')
+        user_wallet = data.get('user_wallet')
+        
+        if order_type not in ['long', 'short']:
+            return jsonify({'error': 'Тип ордера должен быть long или short'}), 400
+        
+        if pair not in pools:
+            return jsonify({'error': f'Пара {pair} не поддерживается'}), 400
+        
+        if amount <= 0:
+            return jsonify({'error': 'Сумма должна быть положительной'}), 400
+        
+        # Создаем ордер
+        order_id = f"order_{int(time.time())}_{random.randint(1000, 9999)}"
+        
+        order = {
+            'id': order_id,
+            'type': order_type,
+            'pair': pair,
+            'amount': amount,
+            'entry_price': entry_price,
+            'stop_loss': float(stop_loss) if stop_loss else None,
+            'take_profit': float(take_profit) if take_profit else None,
+            'status': 'unfunded',  # статус "unfunded" (ожидает поступления depo)
+            'created_at': datetime.now().isoformat(),
+            'user_wallet': user_wallet,
+            'order_wallet': order_wallet_address
+        }
+        
+        # Сохраняем ордер
+        orders_data = load_orders()
+        orders_data['orders'].append(order)
+        save_orders(orders_data)
+        
+        return jsonify({
+            'success': True,
+            'order': order,
+            'message': 'Ордер создан, ожидает пополнения. Для активации переведите TON на адрес ордер-кошелька.'
+        })
+        
+    except Exception as e:
+        print(f"[ORDER CREATE] Error: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/orders/<order_id>', methods=['DELETE'])
+def cancel_order(order_id):
+    """Отменить ордер"""
+    try:
+        orders_data = load_orders()
+        
+        for order in orders_data['orders']:
+            if order['id'] == order_id and order['status'] == 'active':
+                order['status'] = 'cancelled'
+                order['cancelled_at'] = datetime.now().isoformat()
+                save_orders(orders_data)
+                return jsonify({'success': True, 'message': 'Ордер отменен'})
+        
+        return jsonify({'error': 'Ордер не найден или уже исполнен'}), 404
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/orders/<order_id>', methods=['PATCH'])
+def update_order(order_id):
+    """Редактировать активный или unfunded ордер: stop_loss, take_profit, amount"""
+    data = request.json
+    try:
+        orders_data = load_orders()
+        for order in orders_data['orders']:
+            if order['id'] == order_id and order['status'] in ('active', 'unfunded'):
+                # Разрешаем менять SL/TP/amount только если не исполнен/не отменён
+                if 'stop_loss' in data:
+                    order['stop_loss'] = float(data['stop_loss']) if data['stop_loss'] is not None else None
+                if 'take_profit' in data:
+                    order['take_profit'] = float(data['take_profit']) if data['take_profit'] is not None else None
+                if 'amount' in data:
+                    # Если amount увеличивается — требует доп. funding! Можно усложнить логику при необходимости
+                    new_amount = float(data['amount'])
+                    if new_amount <= 0:
+                        return jsonify({'error': 'Сумма должна быть положительной'}), 400
+                    order['amount'] = new_amount
+                    order['status'] = 'unfunded' # нужно будет заново пополнить если был active
+                save_orders(orders_data)
+                return jsonify({'success': True, 'order': order, 'message': 'Ордер успешно обновлён'})
+        return jsonify({'error': 'Ордер не найден или недоступен для редактирования'}), 404
+    except Exception as e:
+        print(f"[ORDER UPDATE] Error: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/order-wallet')
+def get_order_wallet():
+    """Получить адрес кошелька для ордеров"""
+    try:
+        balance = get_balance(order_wallet_address)
+        return jsonify({
+            'address': order_wallet_address,
+            'balance': balance,
+            'status': 'success'
+        })
+    except Exception as e:
+        return jsonify({
+            'address': order_wallet_address,
+            'balance': 0,
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/deposit-order', methods=['POST'])
+def deposit_order():
+    """Создать транзакцию для пополнения ордера"""
+    data = request.json
+    order_id = data.get('order_id')
+    
+    try:
+        orders_data = load_orders()
+        order = None
+        for o in orders_data['orders']:
+            if o['id'] == order_id and o['status'] == 'unfunded':
+                order = o
+                break
+        
+        if not order:
+            return jsonify({'error': 'Ордер не найден или уже пополнен'}), 404
+        
+        # Создаем payload для перевода на кошелек ордеров
+        amount_nano = to_nano(order['amount'] + 0.1)  # +0.1 TON для газа
+        
+        payload = create_deposit_payload(order_id)
+        
+        return jsonify({
+            'validUntil': int(time.time()) + 300,
+            'messages': [{
+                'address': order_wallet_address,
+                'amount': str(amount_nano),
+                'payload': payload
+            }],
+            'transaction_details': {
+                'label': f'Пополнение ордера {order_id}',
+                'breakdown': {
+                    'amount': f'{order["amount"]} TON',
+                    'gas_fee': '0.1 TON',
+                    'total': f'{order["amount"] + 0.1} TON'
+                }
+            }
+        })
+        
+    except Exception as e:
+        print(f"[DEPOSIT] Error: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
@@ -489,4 +819,8 @@ if __name__ == '__main__':
     if 'TON-USDT' in pools:
         quote_out, _ = calculate_quote(1, pools['TON-USDT'])
         print(f"[STARTUP] 1 TON ≈ {quote_out:.6f} USDT")
-    app.run(debug=True)
+    
+    print(f"[STARTUP] Order wallet address: {order_wallet_address}")
+    print(f"[STARTUP] Order wallet balance: {get_balance(order_wallet_address)} TON")
+    
+    app.run(debug=True, port=5000)
