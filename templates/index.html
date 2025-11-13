@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TON Обменник</title>
+    <title>TON Обменник & Ордера</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
         input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
         button { background: #0088cc; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:hover { background: #006699; }
@@ -16,49 +16,213 @@
         #result { margin-top: 20px; padding: 15px; border-radius: 5px; }
         .success { background: #e8f5e8; color: #2e7d32; border: 1px solid #4caf50; }
         .error { background: #ffebee; color: #c62828; border: 1px solid #f44336; }
+        .loading { background: #e3f2fd; color: #1565c0; border: 1px solid #2196f3; }
         .hidden { display: none; }
         .form-group { margin: 15px 0; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         .balance { color: #666; font-size: 0.9em; }
-        .loading { color: #0088cc; }
+        .slippage-control { display: flex; gap: 10px; margin: 10px 0; }
+        .slippage-btn { flex: 1; padding: 8px; text-align: center; background: #f0f0f0; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; }
+        .slippage-btn.active { background: #0088cc; color: white; border-color: #0088cc; }
+        .slippage-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
+        .quote-info { background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #0088cc; }
+        .min-received { color: #666; font-size: 0.9em; margin-top: 5px; }
+        
+        /* Стили для ордеров */
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid #ddd; }
+        .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-right: 5px; border-radius: 5px 5px 0 0; }
+        .tab.active { background: #0088cc; color: white; border-color: #ddd; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .order-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .order-form .full-width { grid-column: 1 / -1; }
+        
+        .orders-list { margin-top: 20px; }
+        .order-item { padding: 15px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
+        .order-item.long { border-left: 4px solid #4caf50; }
+        .order-item.short { border-left: 4px solid #f44336; }
+        .order-header { display: flex; justify-content: between; align-items: center; margin-bottom: 10px; }
+        .order-type { font-weight: bold; padding: 2px 8px; border-radius: 3px; color: white; }
+        .order-type.long { background: #4caf50; }
+        .order-type.short { background: #f44336; }
+        .order-status { padding: 2px 8px; border-radius: 3px; font-size: 0.8em; }
+        .order-status.active { background: #ff9800; color: white; }
+        .order-status.executed { background: #4caf50; color: white; }
+        .order-status.cancelled { background: #9e9e9e; color: white; }
+        .order-details { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em; }
+        .order-actions { margin-top: 10px; text-align: right; }
+        .cancel-btn { background: #f44336; padding: 5px 10px; font-size: 0.8em; width: auto; }
+        
+        .wallet-info { background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.9em; }
+        .deposit-btn {
+            background: #4caf50;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            width: auto;
+            margin-right: 5px;
+        }
+
+        .deposit-btn:hover {
+            background: #45a049;
+        }
+
+        .order-actions {
+            margin-top: 10px;
+            text-align: right;
+        }
+
+        .cancel-btn {
+            background: #f44336;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            width: auto;
+        }
+
+        .edit-btn {
+            background: #ff9800;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            width: auto;
+            margin-right: 5px;
+        }
+.edit-btn:hover {
+    background: #e65100;
+}
+.cancel-btn:hover {
+    background: #d32f2f;
+}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>💰 TON Обменник</h1>
+        <h1>💰 TON Обменник & Торговые Ордера</h1>
+        
+        <div class="tabs">
+            <div class="tab active" data-tab="swap">🔄 Обмен</div>
+            <div class="tab" data-tab="orders">📊 Ордера</div>
+            <div class="tab" data-tab="wallet">👛 Кошелек ордеров</div>
+        </div>
         
         <div id="wallet" class="hidden"></div>
         <button id="connectBtn">🔗 Подключить кошелёк</button>
 
-        <form id="swapForm" class="hidden">
-            <div class="form-group">
-                <label>Отдаете:</label>
-                <select id="fromToken">
-                    <option value="TON">TON</option>
-                    <option value="USDT">USDT</option>
-                    <option value="NOT">NOT</option>
-                </select>
+        <!-- Вкладка обмена -->
+        <div class="tab-content active" id="swap-tab">
+            <form id="swapForm" class="hidden">
+                <div class="form-group">
+                    <label>Отдаете:</label>
+                    <select id="fromToken">
+                        <option value="TON">TON</option>
+                        <option value="USDT">USDT</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Получаете:</label>
+                    <select id="toToken">
+                        <option value="USDT">USDT</option>
+                        <option value="TON">TON</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Сумма:</label>
+                    <input type="number" id="amount" placeholder="0.0" step="0.01" min="0">
+                    <div id="balance" class="balance"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Допуск проскальзывания (Slippage):</label>
+                    <div class="slippage-control">
+                        <div class="slippage-btn" data-slippage="0.5">0.5%</div>
+                        <div class="slippage-btn active" data-slippage="1.0">1.0%</div>
+                        <div class="slippage-btn" data-slippage="2.0">2.0%</div>
+                        <div class="slippage-btn" data-slippage="3.0">3.0%</div>
+                        <input type="number" id="customSlippage" class="slippage-input" placeholder="Custom" min="0.1" max="50" step="0.1">
+                    </div>
+                    <div class="balance">Минимальная сумма получения будет уменьшена на указанный процент</div>
+                </div>
+                
+                <button type="button" id="getQuote">📊 Получить курс</button>
+                <div id="quote"></div>
+                <button type="submit" id="swapBtn">🔄 Обменять</button>
+            </form>
+        </div>
+
+        <!-- Вкладка ордеров -->
+        <div class="tab-content" id="orders-tab">
+            <div class="hidden" id="ordersAuth">
+                <p>Подключите кошелёк чтобы работать с ордерами</p>
+            </div>
+
+            <div class="hidden" id="ordersInterface">
+                <h3>Создать новый ордер</h3>
+                <form id="orderForm">
+                    <div class="order-form">
+                        <div class="form-group">
+                            <label>Тип ордера:</label>
+                            <select id="orderType" required>
+                                <option value="long">LONG (Покупка)</option>
+                                <option value="short">SHORT (Продажа)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Пара:</label>
+                            <select id="orderPair" required>
+                                <option value="TON-USDT">TON-USDT</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group full-width">
+                            <label>Сумма (TON):</label>
+                            <input type="number" id="orderAmount" placeholder="0.0" step="0.01" min="0.1" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Цена входа (USDT):</label>
+                            <input type="number" id="entryPrice" placeholder="7.5" step="0.01" min="0.01" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Stop Loss (USDT):</label>
+                            <input type="number" id="stopLoss" placeholder="7.0" step="0.01" min="0.01">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Take Profit (USDT):</label>
+                            <input type="number" id="takeProfit" placeholder="8.0" step="0.01" min="0.01">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="createOrderBtn">📈 Создать ордер</button>
+                </form>
+
+                <div class="orders-list">
+                    <h3>Активные ордера</h3>
+                    <div id="activeOrders"></div>
+                    
+                    <h3>История ордеров</h3>
+                    <div id="orderHistory"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка кошелька ордеров -->
+        <div class="tab-content" id="wallet-tab">
+            <div class="wallet-info">
+                <h3>👛 Кошелек для ордеров</h3>
+                <p><strong>Адрес:</strong> <span id="orderWalletAddress">Загрузка...</span></p>
+                <p><strong>Баланс:</strong> <span id="orderWalletBalance">0</span> TON</p>
+                <p class="balance">Этот кошелек используется для хранения средств ордеров. Мнемоника уже внесена в систему.</p>
             </div>
             
             <div class="form-group">
-                <label>Получаете:</label>
-                <select id="toToken">
-                    <option value="USDT">USDT</option>
-                    <option value="NOT">NOT</option>
-                    <option value="TON">TON</option>
-                </select>
+                <h4>Депозит для ордеров</h4>
+                <p>Переведите TON на указанный выше адрес для создания ордеров</p>
             </div>
-            
-            <div class="form-group">
-                <label>Сумма:</label>
-                <input type="number" id="amount" placeholder="0.0" step="0.01" min="0">
-                <div id="balance" class="balance"></div>
-            </div>
-            
-            <button type="button" id="getQuote">📊 Получить курс</button>
-            <div id="quote"></div>
-            <button type="submit" id="swapBtn">🔄 Обменять</button>
-        </form>
+        </div>
 
         <div id="result"></div>
     </div>
@@ -66,6 +230,8 @@
     <script>
         let currentWallet = null;
         let tonConnectUI = null;
+        let currentSlippage = 1.0;
+        let orders = [];
 
         // Инициализация TON Connect
         function initTonConnect() {
@@ -76,18 +242,16 @@
                 buttonRootId: 'connectBtn'
             });
 
-            // Восстановление подключения
             tonConnectUI.connectionRestored.then(() => {
                 checkConnection();
             });
 
-            // Слушатель изменения кошелька
             tonConnectUI.onStatusChange(wallet => {
                 currentWallet = wallet;
                 checkConnection();
             });
         }
-
+        
         function checkConnection() {
             const wallet = tonConnectUI.account;
             if (wallet) {
@@ -97,11 +261,207 @@
                 document.getElementById('wallet').classList.remove('hidden');
                 document.getElementById('connectBtn').classList.add('hidden');
                 document.getElementById('swapForm').classList.remove('hidden');
+                document.getElementById('ordersInterface').classList.remove('hidden');
+                document.getElementById('ordersAuth').classList.add('hidden');
                 updateBalance();
+                loadOrders();
+                loadOrderWalletInfo();
             } else {
                 document.getElementById('wallet').classList.add('hidden');
                 document.getElementById('connectBtn').classList.remove('hidden');
                 document.getElementById('swapForm').classList.add('hidden');
+                document.getElementById('ordersInterface').classList.add('hidden');
+                document.getElementById('ordersAuth').classList.remove('hidden');
+            }
+        }
+
+        // Управление вкладками
+        function setupTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Деактивируем все вкладки
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    
+                    // Активируем выбранную
+                    tab.classList.add('active');
+                    const tabId = tab.dataset.tab + '-tab';
+                    document.getElementById(tabId).classList.add('active');
+                    
+                    // При переключении на ордера обновляем список
+                    if (tab.dataset.tab === 'orders') {
+                        loadOrders();
+                    }
+                });
+            });
+        }
+
+        // Управление slippage
+        function setupSlippageControls() {
+            const buttons = document.querySelectorAll('.slippage-btn');
+            const customInput = document.getElementById('customSlippage');
+            
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    buttons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentSlippage = parseFloat(btn.dataset.slippage);
+                    customInput.value = '';
+                });
+            });
+            
+            customInput.addEventListener('input', () => {
+                if (customInput.value) {
+                    buttons.forEach(b => b.classList.remove('active'));
+                    currentSlippage = parseFloat(customInput.value);
+                }
+            });
+            
+            customInput.addEventListener('blur', () => {
+                if (customInput.value) {
+                    let value = parseFloat(customInput.value);
+                    if (value < 0.1) value = 0.1;
+                    if (value > 50) value = 50;
+                    currentSlippage = value;
+                    customInput.value = value;
+                }
+            });
+        }
+
+        // Загрузка информации о кошельке ордеров
+        async function loadOrderWalletInfo() {
+            try {
+                const res = await fetch('/order-wallet');
+                const data = await res.json();
+                
+                if (data.address) {
+                    document.getElementById('orderWalletAddress').textContent = data.address;
+                    document.getElementById('orderWalletBalance').textContent = data.balance.toFixed(4);
+                }
+            } catch (error) {
+                console.error('Order wallet info error:', error);
+            }
+        }
+
+        // Загрузка ордеров
+        async function loadOrders() {
+            if (!currentWallet) return;
+            
+            try {
+                const res = await fetch('/orders');
+                const data = await res.json();
+                orders = data.orders || [];
+                displayOrders();
+            } catch (error) {
+                console.error('Load orders error:', error);
+            }
+        }
+
+        // Отображение ордеров
+        async function displayOrders() {
+            const activeOrdersDiv = document.getElementById('activeOrders');
+            const historyDiv = document.getElementById('orderHistory');
+            // Получаем текущие цены для пар:
+            let prices = {};
+            try {
+                const res = await fetch('/quote', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({from_token: 'TON', to_token: 'USDT', amount: 1, slippage: 1})
+                });
+                const d = await res.json();
+                prices['TON-USDT'] = d.quote;
+            } catch {_=>{}}
+            const userOrders = orders.filter(order => order.user_wallet === currentWallet.address);
+            const activeOrders = userOrders.filter(order => order.status !== 'executed' && order.status !== 'cancelled');
+            const historyOrders = userOrders.filter(order => order.status === 'executed' || order.status === 'cancelled');
+            function renderOrder(order) {
+                let currentPrice = prices[order.pair] || order.entry_price;
+                const pnl = calculatePnL(order, currentPrice);
+                const comms = calculateComms(order);
+                        
+                return `
+                    <div class="order-item ${order.type}">
+                        <div class="order-header">
+                            <span class="order-type ${order.type}">${order.type.toUpperCase()}</span>
+                            <span class="order-status ${order.status}">${getStatusText(order.status)}</span>
+                        </div>
+                        <div class="order-details">
+                            <div><strong>Пара:</strong> ${order.pair}</div>
+                            <div><strong>Сумма:</strong> ${order.amount} TON</div>
+                            <div><strong>Вход:</strong> ${order.entry_price} USDT</div>
+                            <div><strong>Текущий курс:</strong> ${(+currentPrice).toFixed(4)} USDT</div>
+                            <div><strong>Stop Loss:</strong> ${order.stop_loss || 'Не установлен'}</div>
+                            <div><strong>Take Profit:</strong> ${order.take_profit || 'Не установлен'}</div>
+                            <div><strong>Потенц. Профит:</strong> <span style='color:${pnl>0?'#4caf50':'#f44336'}'>${pnl.toFixed(3)} USDT</span></div>
+                            <div><strong>Комиссия:</strong> ${comms.toFixed(4)} TON</div>
+                            <div><strong>Создан:</strong> ${new Date(order.created_at).toLocaleString()}</div>
+                        </div>
+
+                        <!-- ВСТАВЛЯЕМ ЗДЕСЬ БЛОК С КНОПКАМИ -->
+                        <div class="order-actions">
+                            ${order.status === 'unfunded' ? 
+                                `<button class="deposit-btn" onclick="depositOrder('${order.id}')">💳 Пополнить ордер</button>` 
+                                : ''}
+                            ${['active','unfunded'].includes(order.status) ? 
+                                `<button class="edit-btn" data-order='${JSON.stringify(order)}'>✏️ Редактировать</button>` 
+                                : ''}
+                            <button class="cancel-btn" onclick="cancelOrder('${order.id}')">❌ Отменить</button>
+                        </div>
+                    </div>
+                `;
+            }
+            activeOrdersDiv.innerHTML = activeOrders.length ? activeOrders.map(renderOrder).join('') : '<p>Нет активных ордеров</p>';
+            historyDiv.innerHTML = historyOrders.length ? historyOrders.map(renderOrder).join('') : '<p>Нет истории ордеров</p>';
+            bindEditBtns();
+        }
+
+        // Новый статус для unfunded
+        function getStatusText(status) {
+            const statusMap = {
+                'unfunded': 'Ожидает пополнения',
+                'active': 'Активен',
+                'executed': 'Исполнен',
+                'cancelled': 'Отменён'
+            };
+            return statusMap[status] || status;
+        }
+        // Вставим расчет PnL/комиссии (разница текущего курса и entry_price) и расширимрендеринг деталей:
+        function calculatePnL(order, currentPrice) {
+            // PNL = (текущий курс - entry) * amount для LONG, наоборот для SHORT
+            if (!order.entry_price || !order.amount) return 0;
+            if (!currentPrice) return 0;
+            let pnl = 0;
+            if (order.type === 'long') {
+                pnl = (currentPrice - order.entry_price) * order.amount;
+            } else {
+                pnl = (order.entry_price - currentPrice) * order.amount;
+            }
+            return pnl;
+        }
+        function calculateComms(order) {
+            // Общая комиссия = service_fee + pool_fee
+            // 0.0025 + 0.003 = 0.0055 (0.55%) от суммы
+            return order.amount ? order.amount * 0.0055 : 0;
+        }
+
+        // Отмена ордера
+        async function cancelOrder(orderId) {
+            if (!confirm('Вы уверены, что хотите отменить ордер?')) return;
+            
+            try {
+                const res = await fetch(`/orders/${orderId}`, { method: 'DELETE' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showResult('Ордер отменен', 'success');
+                    loadOrders();
+                } else {
+                    showResult('Ошибка: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Cancel order error:', error);
+                showResult('Ошибка отмены ордера', 'error');
             }
         }
 
@@ -156,7 +516,8 @@
                     body: JSON.stringify({
                         from_token: fromToken, 
                         to_token: toToken, 
-                        amount: amount
+                        amount: amount,
+                        slippage: currentSlippage
                     })
                 });
                 const data = await res.json();
@@ -166,14 +527,75 @@
                     quoteDiv.innerHTML = `<div class="error">Ошибка: ${data.error}</div>`;
                 } else {
                     quoteDiv.innerHTML = `
-                        <div class="success">
+                        <div class="quote-info">
                             <strong>Вы получите: ${data.formatted}</strong>
+                            <div class="min-received">Минимум: ${data.min_output_formatted} (slippage: ${data.slippage}%)</div>
                         </div>
                     `;
                 }
             } catch (error) {
                 console.error('Quote error:', error);
                 showResult('Ошибка получения курса', 'error');
+            }
+        });
+
+        // Создание ордера
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentWallet) {
+                showResult('Сначала подключите кошелёк', 'error');
+                return;
+            }
+            
+            const orderType = document.getElementById('orderType').value;
+            const pair = document.getElementById('orderPair').value;
+            const amount = document.getElementById('orderAmount').value;
+            const entryPrice = document.getElementById('entryPrice').value;
+            const stopLoss = document.getElementById('stopLoss').value;
+            const takeProfit = document.getElementById('takeProfit').value;
+            
+            if (!amount || amount <= 0) {
+                showResult('Введите сумму ордера', 'error');
+                return;
+            }
+            
+            if (!entryPrice || entryPrice <= 0) {
+                showResult('Введите цену входа', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/orders', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        type: orderType,
+                        pair: pair,
+                        amount: parseFloat(amount),
+                        entry_price: parseFloat(entryPrice),
+                        stop_loss: stopLoss || null,
+                        take_profit: takeProfit || null,
+                        user_wallet: currentWallet.address
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    let msg = `Ордер ${orderType.toUpperCase()} создан!`;
+                    if (data.order.status === 'unfunded') {
+                        msg += `<br><b>Переведите <span style='color:#0088cc'>${data.order.amount} TON</span> на <span style='color:#006699'>${data.order.order_wallet}</span> для активации!</b>`;
+                    }
+                    showResult(msg, 'success');
+                    document.getElementById('orderForm').reset();
+                    loadOrders();
+                } else {
+                    showResult('Ошибка: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Create order error:', error);
+                showResult('Ошибка создания ордера', 'error');
             }
         });
 
@@ -204,7 +626,8 @@
                         wallet_address: currentWallet.address,
                         from_token: fromToken,
                         to_token: toToken,
-                        amount: amount
+                        amount: amount,
+                        slippage: currentSlippage
                     })
                 });
                 const data = await res.json();
@@ -216,13 +639,10 @@
             
                 showResult('Подтвердите транзакцию в кошельке...', 'loading');
                 
-                // Поддержка двух форматов ответа
                 let message;
                 if (data.messages && Array.isArray(data.messages)) {
-                    // Новый формат
                     message = data.messages[0];
                 } else {
-                    // Старый формат
                     message = {
                         address: data.to_address,
                         amount: data.amount,
@@ -256,18 +676,6 @@
             }
         });
     
-        function showResult(message, type = '') {
-            const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = message;
-            resultDiv.className = type;
-        }
-    
-        // Обновляем баланс при смене токена
-        document.getElementById('fromToken').addEventListener('change', updateBalance);
-    
-        // Инициализация
-        initTonConnect();
-        
         function showResult(message, type) {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = message;
@@ -277,8 +685,114 @@
         // Обновляем баланс при смене токена
         document.getElementById('fromToken').addEventListener('change', updateBalance);
 
-        // Инициализация при загрузке
+        // Инициализация
         initTonConnect();
+        setupSlippageControls();
+        setupTabs();
+        
+        // Автообновление ордеров каждые 30 секунд
+        setInterval(() => {
+            if (currentWallet) {
+                loadOrders();
+                loadOrderWalletInfo();
+            }
+        }, 30000);
+
+        function bindEditBtns() {
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const order = JSON.parse(btn.dataset.order);
+                    showEditModal(order);
+                }
+            });
+        }
+        window.showEditModal = function(order) {
+            if (document.getElementById('orderEditModal')) document.getElementById('orderEditModal').remove();
+            const modal = document.createElement('div');
+            modal.id = 'orderEditModal';
+            modal.style = 'position:fixed;z-index:9999;left:0;top:0;width:100vw;height:100vh;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;';
+            modal.innerHTML = `<div style='background:white;padding:30px 20px;border-radius:8px;min-width:320px;max-width:95vw'>
+            <h3>Редактировать ордер (${order.id})</h3>
+            <form id='editOrderForm'>
+              <label>Сумма TON:<input type='number' name='amount' value='${order.amount}' step='0.01' required></label><br><label>Stop Loss:<input type='number' name='stop_loss' value='${order.stop_loss || ''}' step='0.01'></label><br><label>Take Profit:<input type='number' name='take_profit' value='${order.take_profit || ''}' step='0.01'></label><br><button type='submit'>💾 Сохранить</button> <button type='button' onclick='document.getElementById("orderEditModal").remove()'>Отмена</button>
+            </form>
+            </div>`;
+            document.body.appendChild(modal);
+            document.getElementById('editOrderForm').onsubmit = async (e) => {
+              e.preventDefault();
+              const f = e.target;
+              const patch = {
+                amount: parseFloat(f.amount.value),
+                stop_loss: f.stop_loss.value ? parseFloat(f.stop_loss.value) : null,
+                take_profit: f.take_profit.value ? parseFloat(f.take_profit.value) : null
+              };
+              try {
+                const res = await fetch(`/orders/${order.id}`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
+                const data = await res.json();
+                if (data.success) {
+                  showResult('Ордер обновлен!','success');
+                  document.getElementById('orderEditModal').remove();
+                  loadOrders();
+                } else {
+                  showResult('Ошибка: '+data.error,'error');
+                }
+              } catch(e){
+                showResult('Ошибка при обновлении','error');
+              }
+            }
+        }
+        async function depositOrder(orderId) {
+            if (!currentWallet) {
+                showResult('Сначала подключите кошелёк', 'error');
+                return;
+            }
+        
+            try {
+                showResult('Подготовка транзакции пополнения...', 'loading');
+
+                const res = await fetch('/deposit-order', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        order_id: orderId
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    showResult('Ошибка: ' + data.error, 'error');
+                    return;
+                }
+
+                showResult('Подтвердите транзакцию пополнения в кошельке...', 'loading');
+
+                try {
+                    const result = await tonConnectUI.sendTransaction({
+                        validUntil: data.validUntil,
+                        messages: data.messages
+                    });
+
+                    showResult('Ордер успешно пополнен! Статус обновится через несколько секунд.', 'success');
+                    console.log("Deposit transaction sent:", result);
+
+                    // Обновляем список ордеров через 5 секунд
+                    setTimeout(loadOrders, 5000);
+
+                } catch (txError) {
+                    console.error("Deposit transaction failed:", txError);
+                    if (txError.message?.includes('rejected') || txError.message?.includes('declined')) {
+                        showResult('Транзакция пополнения отменена', 'error');
+                    } else {
+                        showResult('Ошибка пополнения: ' + txError.message, 'error');
+                    }
+                }
+
+            } catch (error) {
+                console.error('Deposit error:', error);
+                showResult('Ошибка: ' + error.message, 'error');
+            }
+        }
     </script>
 </body>
 </html>
