@@ -13,7 +13,7 @@ from order_system import (
     OrderProcessor
 )
 from app import (
-    get_db_connection, pools, get_current_price, load_orders, save_order
+    get_db_connection, pools, get_current_price, load_orders, save_order, get_primary_pool
 )
 
 
@@ -27,9 +27,10 @@ class OrderEngine:
     
     def _get_price(self, symbol: str) -> Decimal:
         """Получает текущую цену для символа"""
-        if symbol not in pools:
+        pool = get_primary_pool(symbol)
+        if not pool:
             return Decimal("0")
-        price = get_current_price(pools[symbol]['address'])
+        price = get_current_price(pool['address'], pool)
         return Decimal(str(price))
     
     def load_orders_from_db(self):
@@ -111,6 +112,7 @@ class OrderEngine:
                 'take_profit': float(order.take_profit) if order.take_profit else None,
                 'user_wallet': order.user_wallet,
                 'order_wallet': order.order_wallet,
+                'order_wallet_id': getattr(order, 'order_wallet_id', None),
                 'status': self._map_status_to_legacy(order.status),
                 'created_at': order.created_at.isoformat(),
                 'funded_at': order.filled_at.isoformat() if order.filled_at else None,
@@ -277,4 +279,86 @@ def get_order_engine() -> OrderEngine:
         _engine = OrderEngine()
         _engine.start()
     return _engine
+
+
+
+
+
+# config/advanced_logger_config.py
+import logging
+from logging.handlers import SysLogHandler
+import socket
+
+class AdvancedSyslogHandler(SysLogHandler):
+    """Расширенный обработчик Syslog с дополнительными полями"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hostname = socket.gethostname()
+        self.app_name = 'practice_docs_system'
+    
+    def format(self, record):
+        """Форматирование записей для Syslog с дополнительными метаданными"""
+        msg = super().format(record)
+        
+        # Добавление структурированных данных в формате JSON
+        structured_data = self._create_structured_data(record)
+        if structured_data:
+            msg = f"{msg} {structured_data}"
+            
+        return msg
+    
+    def _create_structured_data(self, record):
+        """Создание структурированных данных для Syslog"""
+        try:
+            structured_data = {
+                'app': self.app_name,
+                'host': self.hostname,
+                'module': getattr(record, 'module', ''),
+                'function': getattr(record, 'funcName', ''),
+                'user_id': getattr(record, 'user_id', None),
+                'request_id': getattr(record, 'request_id', None)
+            }
+            # Фильтрация None значений
+            structured_data = {k: v for k, v in structured_data.items() if v is not None}
+            return json.dumps(structured_data)
+        except Exception:
+            return None
+
+def configure_advanced_syslog(app):
+    """Расширенная настройка Syslog с поддержкой структурированного логирования"""
+    
+    if app.config.get('SYSLOG_ENABLED', False):
+        try:
+            # Создание расширенного обработчика Syslog
+            syslog_handler = AdvancedSyslogHandler(
+                address=(
+                    app.config['SYSLOG_SERVER'], 
+                    app.config.get('SYSLOG_PORT', 514)
+                ),
+                facility=SysLogHandler.facility_names.get(
+                    app.config.get('SYSLOG_FACILITY', 'local0')
+                )
+            )
+            
+            # Форматтер для Syslog
+            formatter = logging.Formatter(
+                '%(name)s[%(process)d]: %(levelname)s - %(message)s'
+            )
+            syslog_handler.setFormatter(formatter)
+            
+            # Установка уровня логирования для Syslog
+            syslog_level = getattr(
+                logging, 
+                app.config.get('SYSLOG_LEVEL', 'INFO')
+            )
+            syslog_handler.setLevel(syslog_level)
+            
+            # Добавление обработчика к корневому логгеру
+            logging.getLogger().addHandler(syslog_handler)
+            
+            app.logger.info("Syslog handler configured successfully")
+            
+        except Exception as e:
+            app.logger.error(f"Failed to configure Syslog: {e}")
 
