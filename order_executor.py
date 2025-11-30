@@ -57,13 +57,9 @@ def _error_result(message: str, transient: Optional[bool] = None):
         transient = _is_transient_error(message)
     return {'success': False, 'error': message, 'transient': transient}
 
-# Попытка импортировать pytoniq для отправки транзакций
-try:
-    from pytoniq import LiteClient, WalletV5R1
-    PYTONIQ_AVAILABLE = True
-except ImportError:
-    PYTONIQ_AVAILABLE = False
-    print("[ORDER EXECUTOR] pytoniq not available, transactions will be prepared but not sent")
+from pytoniq import LiteClient, WalletV5R1
+PYTONIQ_AVAILABLE = True
+
 
 def to_nano(amount: float, decimals: int = 9) -> int:
     """Конвертация суммы в минимальные единицы"""
@@ -331,7 +327,6 @@ def _maybe_send_transaction(order_wallet_address: str, order_wallet_mnemonic: Op
                 # Fallback connection
                 try:
                     await client.connect()
-                    print(f"[ORDER EXECUTOR] ✅ Подключено к сети")
                 except Exception as e:
                     print(f"[ORDER EXECUTOR] Connection failed: {e}")
                     result['message'] = 'Failed to connect to TON network'
@@ -347,8 +342,6 @@ def _maybe_send_transaction(order_wallet_address: str, order_wallet_mnemonic: Op
                 await client.close()
                 return False
             
-            # Create wallet from mnemonic
-            from pytoniq import WalletV5R1
             wallet = await WalletV5R1.from_mnemonic(
                 provider=client,
                 mnemonics=mnemonic_words,
@@ -374,7 +367,6 @@ def _maybe_send_transaction(order_wallet_address: str, order_wallet_mnemonic: Op
             wallet_initialized = False
             try:
                 seqno = await wallet.get_seqno()
-                print(f"[ORDER EXECUTOR] Кошелек инициализирован, seqno: {seqno}")
                 wallet_initialized = True
             except Exception as seqno_error:
                 print(f"[ORDER EXECUTOR] Кошелек не инициализирован: {seqno_error}")
@@ -436,7 +428,6 @@ def _maybe_send_transaction(order_wallet_address: str, order_wallet_mnemonic: Op
                     )
                 
                 print(f"[ORDER EXECUTOR] ✅ Транзакция отправлена успешно!")
-                print(f"[ORDER EXECUTOR] Результат: {transfer_result}")
                 await client.close()
                 return True
                 
@@ -470,6 +461,102 @@ def _maybe_send_transaction(order_wallet_address: str, order_wallet_mnemonic: Op
         result['message'] = str(e)
         result['transient'] = _is_transient_error(result['message'])
         return result
+
+
+def calculate_order_gas_requirements(order: Dict, pool: Dict) -> Dict:
+    """
+    Рассчитывает необходимое количество газа для ордера
+    """
+    try:
+        order_amount = float(order.get('amount', 0))
+        slippage = float(order.get('max_slippage', 1.0))
+        
+        # Определяем направление обмена
+        from_token, to_token, from_token_address, description = determine_swap_direction(order, pool)
+        
+        # Определяем decimals
+        from_decimals = 9 if from_token == "TON" else 6
+        to_decimals = 6 if to_token == "USDT" else 9
+        
+        # Определяем, нужно ли обратить пул для расчета
+        calculation_pool = pool
+        if from_token == pool.get('to_token', 'USDT'):
+            calculation_pool = {
+                'address': pool['address'],
+                'from_token': pool['to_token'],
+                'to_token': pool['from_token'],
+                'from_token_address': pool.get('to_token_address'),
+                'to_token_address': pool.get('from_token_address'),
+                'from_decimals': pool.get('to_decimals', 6),
+                'to_decimals': pool.get('from_decimals', 9),
+                'dex': pool.get('dex', 'DeDust')
+            }
+        
+        # Рассчитываем выходное количество токенов
+        output, min_out_nano, expected_out_nano = calculate_quote_for_execution(
+            order_amount, calculation_pool, slippage
+        )
+        
+        if output == 0 or min_out_nano == 0:
+            return {
+                'success': False,
+                'error': 'Не удалось рассчитать выходное количество токенов'
+            }
+        
+        # Определяем DEX и базовый газ
+        dex = pool.get('dex', 'DeDust')
+        
+        # РЕАЛЬНЫЕ РАСЧЕТЫ ГАЗА:
+        # Для DeDust: ~0.15 TON, для StonFi: ~0.12 TON
+        if dex == "DeDust":
+            base_gas = to_nano(0.15, 9)  # 0.15 TON для DeDust
+        elif dex == "StonFi":
+            base_gas = to_nano(0.12, 9)  # 0.12 TON для StonFi
+        else:
+            base_gas = to_nano(0.15, 9)  # fallback значение
+        
+        # Дополнительный газ для комиссий обменника
+        exchange_fee_gas = to_nano(0.05, 9)  # 0.05 TON для комиссий
+        
+        # Комиссия обменника (0.3% pool fee + 0.25% service fee = 0.55%)
+        exchange_fee_percent = 0.0055  # 0.55%
+        exchange_fee_amount = order_amount * exchange_fee_percent
+        
+        # Общий газ
+        total_gas = base_gas + exchange_fee_gas
+        
+        # Рассчитываем общую сумму (для TON + газ)
+        total_amount_ton = 0
+        if from_token == "TON":
+            # Для TON: сумма ордера + газ
+            total_amount_ton = order_amount + (total_gas / 1e9)
+        else:
+            # Для Jetton: только газ
+            total_amount_ton = total_gas / 1e9
+        
+        return {
+            'success': True,
+            'gas_amount': total_gas / 1e9,  # в TON
+            'base_gas': base_gas / 1e9,  # базовый газ
+            'exchange_fee_gas': exchange_fee_gas / 1e9,  # газ для комиссий
+            'exchange_fee_percent': exchange_fee_percent * 100,  # процент комиссии
+            'exchange_fee_amount': exchange_fee_amount,  # сумма комиссии в from_token
+            'total_amount': total_amount_ton,  # в TON (сумма + газ)
+            'from_token': from_token,
+            'to_token': to_token,
+            'from_amount': order_amount,
+            'expected_output': output,
+            'dex': dex,
+            'description': description
+        }
+    except Exception as e:
+        print(f"[ORDER EXECUTOR] Ошибка расчета газа: {e}")
+        traceback.print_exc()
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
 
 def _estimate_dynamic_gas(wallet_address: str, payload: str, fallback: int) -> int:
     """
@@ -515,11 +602,10 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
         order_amount = float(order.get('amount', 0))
         order_wallet_address = wallet_credentials.get('address')
         order_wallet_mnemonic = wallet_credentials.get('mnemonic')
+        
         if not order_wallet_address:
             return {'success': False, 'error': 'Order wallet address is not specified'}
-        
-        print(f"[ORDER EXECUTOR] Executing swap for order {order_id} (type: {order_type}, action: {action}, amount: {order_amount})")
-        
+                
         # Определяем направление обмена
         from_token, to_token, from_token_address, description = determine_swap_direction(order, pool)
         
@@ -548,14 +634,24 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
             # Используем TON
             amount_nano = to_nano(order_amount, from_decimals)
             
-            # Проверяем баланс TON
+            # Проверяем баланс TON с РЕАЛЬНЫМ расчетом газа
             ton_balance = get_balance(order_wallet_address)
-            required_ton = order_amount + 0.5  # +0.5 для газа
-            print(f"[ORDER EXECUTOR] Баланс TON: {ton_balance:.6f}, требуется: {required_ton:.6f}")
+            
+            # РЕАЛЬНЫЙ расчет требуемого газа
+            dex = pool.get('dex', 'DeDust')
+            if dex == "DeDust":
+                required_gas = 0.15  # TON
+            elif dex == "StonFi":
+                required_gas = 0.12  # TON
+            else:
+                required_gas = 0.15  # TON
+                
+            required_ton = order_amount + required_gas
+            print(f"[ORDER EXECUTOR] Баланс TON: {ton_balance:.6f}, требуется: {order_amount:.6f} TON + {required_gas:.6f} TON газа = {required_ton:.6f} TON")
             
             if ton_balance < required_ton:
                 return _error_result(
-                    f'Недостаточно TON на кошельке ордеров. Баланс: {ton_balance:.6f}, требуется: {required_ton:.6f}',
+                    f'Недостаточно TON на кошельке ордеров. Баланс: {ton_balance:.6f}, требуется: {required_ton:.6f} TON (ордер: {order_amount:.6f} TON + газ: {required_gas:.6f} TON)',
                     transient=False
                 )
         else:
@@ -584,35 +680,21 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
                 )
             
             amount_nano = to_nano(order_amount, from_decimals)
-        
-        # Используем get_expected_output для точного расчета
-        try:
-            from_token_addr = calculation_pool.get('from_token_address') or os.environ.get("TON_AS_TOKEN")
-            # Make sure from_token_addr is not None
-            if from_token_addr is None:
-                from_token_addr = ""
-            expected_out_nano = get_expected_output(
-                calculation_pool['address'], 
-                amount_nano, 
-                from_token_addr
-            )
             
-            if expected_out_nano > 0:
-                output = expected_out_nano / (10 ** to_decimals)
-                min_out_nano = int(expected_out_nano * (1 - slippage / 100))
-                print(f"[ORDER EXECUTOR] Расчет через get_expected_output: {order_amount:.6f} {from_token} -> {output:.6f} {to_token}")
-            else:
-                # Fallback на расчет через формулу
-                output, min_out_nano, expected_out_nano = calculate_quote_for_execution(
-                    order_amount, calculation_pool, slippage
+            # Для Jetton также проверяем наличие TON для газа
+            ton_balance = get_balance(order_wallet_address)
+            required_gas = 0.15  # TON для Jetton операций
+            if ton_balance < required_gas:
+                return _error_result(
+                    f'Недостаточно TON для газа. Баланс: {ton_balance:.6f}, требуется: {required_gas:.6f} TON',
+                    transient=False
                 )
-                print(f"[ORDER EXECUTOR] Расчет через формулу: {order_amount:.6f} {from_token} -> {output:.6f} {to_token}")
-        except Exception as e:
-            print(f"[ORDER EXECUTOR] Error using get_expected_output: {e}, using fallback")
-            output, min_out_nano, expected_out_nano = calculate_quote_for_execution(
-                order_amount, calculation_pool, slippage
-            )
-            print(f"[ORDER EXECUTOR] Расчет через формулу (fallback): {order_amount:.6f} {from_token} -> {output:.6f} {to_token}")
+        
+        # Рассчитываем выходное количество токенов
+        output, min_out_nano, expected_out_nano = calculate_quote_for_execution(
+            order_amount, calculation_pool, slippage
+        )
+        print(f"[ORDER EXECUTOR] Расчет через формулу: {order_amount:.6f} {from_token} -> {output:.6f} {to_token}")
         
         if output == 0 or min_out_nano == 0:
             return _error_result('Не удалось рассчитать выходное количество токенов', transient=False)
@@ -623,16 +705,16 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
         if from_token == "TON":
             if dex == "DeDust":
                 dest_addr = os.environ.get("DEDUST_NATIVE_VAULT")
-                base_gas = DEDUST_GAS_AMOUNT
+                base_gas = to_nano(0.15, 9)  # 0.15 TON для DeDust
             elif dex == "StonFi":
                 dest_addr = os.environ.get("STONFI_PROXY_TON")
-                base_gas = STONFI_GAS_AMOUNT
+                base_gas = to_nano(0.12, 9)  # 0.12 TON для StonFi
             else:
                 return _error_result(f'Unsupported DEX: {dex}', transient=False)
         else:
             # Для Jetton нужно использовать jetton wallet
             dest_addr = get_jetton_wallet(from_token_address, order_wallet_address)
-            base_gas = to_nano(0.2, 9)
+            base_gas = to_nano(0.15, 9)  # 0.15 TON для Jetton операций
         
         # Validate address and make sure it's not None
         if dest_addr is None:
@@ -651,7 +733,9 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
         else:
             return _error_result(f'Unsupported DEX: {dex}', transient=False)
         
-        gas = _estimate_dynamic_gas(order_wallet_address, payload, base_gas)
+        # Используем РЕАЛЬНЫЙ газ вместо динамического расчета
+        gas = base_gas
+        
         if from_token == "TON":
             total_amount = amount_nano + gas
         else:
@@ -674,7 +758,10 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
                 'expected_output': output,
                 'min_output': min_out_nano / (10 ** to_decimals),
                 'slippage': slippage,
-                'gas': gas / 1e9
+                'gas': gas / 1e9,
+                'exchange_fee_percent': 0.55,  # 0.55% комиссия
+                'exchange_fee_amount': order_amount * 0.0055,  # сумма комиссии
+                'net_received': output - (order_amount * 0.0055)  # чистая сумма после комиссий
             },
             'transient': False
         }
@@ -682,7 +769,7 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
         if from_token == "TON":
             balance = get_balance(order_wallet_address)
             required = total_amount / 1e9
-            print(f"[ORDER EXECUTOR] Баланс кошелька: {balance:.6f} TON, требуется: {required:.6f} TON")
+            print(f"[ORDER EXECUTOR] Баланс кошелька: {balance:.6f} TON, требуется: {required:.6f} TON (ордер: {order_amount:.6f} TON + газ: {gas/1e9:.6f} TON)")
             if balance < required:
                 result['transaction_sent'] = False
                 result['message'] = f'Недостаточно средств: баланс {balance:.6f} TON, требуется {required:.6f} TON'
@@ -690,7 +777,7 @@ def execute_order_swap(order: Dict, pool: Dict, wallet_credentials: Dict,
         
         send_result = _maybe_send_transaction(order_wallet_address, order_wallet_mnemonic, dest_valid, total_amount, payload)
         result.update(send_result)
-        print(f"[ORDER EXECUTOR] Swap prepared: {order_amount} {from_token} -> ~{output:.6f} {to_token}")
+        print(f"[ORDER EXECUTOR] Swap prepared: {order_amount} {from_token} -> ~{output:.6f} {to_token} (комиссия: {order_amount * 0.0055:.6f} {from_token})")
         return result
         
     except Exception as e:
@@ -724,3 +811,29 @@ def transfer_ton_from_wallet(wallet_credentials: Dict, destination: str,
         'message': send_result.get('message'),
         'transaction': send_result.get('transaction')
     }
+
+
+if __name__ == "__main__":
+    # Тестовая функция для проверки расчета газа
+    test_order = {
+        'id': 'test_order_1',
+        'type': 'long',
+        'amount': 1.0,
+        'max_slippage': 1.0,
+        'order_wallet': 'UQD1V6ZNou__gvGZ9b-c69g9n1aXvSN4HJG1avp-AHDSRueL'
+    }
+    
+    test_pool = {
+        'address': 'EQD1V6ZNou__gvGZ9b-c69g9n1aXvSN4HJG1avp-AHDSRueL',
+        'from_token': 'TON',
+        'to_token': 'USDT',
+        'from_token_address': '',
+        'to_token_address': 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs',
+        'from_decimals': 9,
+        'to_decimals': 6,
+        'dex': 'DeDust'
+    }
+    
+    gas_info = calculate_order_gas_requirements(test_order, test_pool)
+    print("Тестовый расчет газа:")
+    print(gas_info)

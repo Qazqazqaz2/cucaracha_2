@@ -1,6 +1,7 @@
-aiogram==3.0.0
 Flask==2.3.3
 requests==2.31.0
+pytoniq==0.1.42
 pytoniq-core==0.1.6
-matplotlib==3.7.1
 python-dotenv==1.0.0
+cryptography==41.0.7
+psycopg2-binary==2.9.9

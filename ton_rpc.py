@@ -22,18 +22,7 @@ if not API_KEY:
     raise ValueError("API_KEY must be set in .env for Toncenter access")
 
 def toncenter_request(method, params=None, retries=5, timeout=30):
-    """
-    Синхронный запрос к TON Center API с retry логикой и экспоненциальным backoff
-    
-    Args:
-        method: Метод JSON-RPC (например, 'getAddressInformation', 'runGetMethod')
-        params: Параметры запроса
-        retries: Количество попыток при ошибке
-        timeout: Таймаут запроса в секундах
-    
-    Returns:
-        dict: Результат запроса или None при ошибке
-    """
+
     url = f"{BASE_URL}/jsonRPC"
     headers = {
         'Content-Type': 'application/json',
@@ -49,10 +38,6 @@ def toncenter_request(method, params=None, retries=5, timeout=30):
 
     for attempt in range(retries):
         try:
-            if "get_wallet_address" in str(payload):
-                print(f"[TON RPC] Sending request to {url}")
-                print(f"[TON RPC] Payload: {payload}")
-                print(f"[TON RPC] Headers: {headers}")
             response = requests.post(url, json=payload, headers=headers, timeout=current_timeout)
             response.raise_for_status()
             data = response.json()
@@ -63,17 +48,14 @@ def toncenter_request(method, params=None, retries=5, timeout=30):
                     continue
             return data.get('result', {})
         except Exception as e:
-            print(f"[TON RPC] Error (attempt {attempt+1}/{retries}): {e}")
+            print(f"[TON RPC] Error (attempt {attempt+1}/{retries}) method:{payload}: {e}")
             time.sleep(2 ** attempt)  # Exponential backoff
     print(f"[TON RPC] All retries failed for {method} payload: {payload}")
     return None
 
 
 def estimate_gas_fee(address: str, payload_b64: str, init_code: str | None = None, init_data: str | None = None, ignore_chksig: bool = True):
-    """
-    Динамическая оценка газа через TonCenter.
-    Возвращает словарь с компонентами комиссий в нанотонах.
-    """
+    
     try:
         normalized = validate_address(address)
         params = {
@@ -213,6 +195,9 @@ def get_expected_output(pool_addr: str, amount_nano: int, from_token_addr: str):
         int: Ожидаемое количество выходных токенов в нано-единицах
     """
     try:
+        # Handle None or empty from_token_addr
+        if not from_token_addr:
+            from_token_addr = ""
         token_builder = Builder()
         token_builder.store_address(Address(from_token_addr))
         token_cell = token_builder.end_cell()

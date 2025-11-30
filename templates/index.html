@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TON Обменник & Ордера</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
         .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -27,17 +28,17 @@
         .slippage-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
         .quote-info { background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #0088cc; }
         .min-received { color: #666; font-size: 0.9em; margin-top: 5px; }
-        
+       
         /* Стили для ордеров */
         .tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid #ddd; }
         .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-right: 5px; border-radius: 5px 5px 0 0; }
         .tab.active { background: #0088cc; color: white; border-color: #ddd; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        
+       
         .order-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .order-form .full-width { grid-column: 1 / -1; }
-        
+       
         .orders-list { margin-top: 20px; }
         .order-item { padding: 15px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
         .order-item.long { border-left: 4px solid #4caf50; }
@@ -53,7 +54,7 @@
         .order-details { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em; }
         .order-actions { margin-top: 10px; text-align: right; }
         .cancel-btn { background: #f44336; padding: 5px 10px; font-size: 0.8em; width: auto; }
-        
+       
         .wallet-info { background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.9em; }
         .deposit-btn {
             background: #4caf50;
@@ -62,23 +63,19 @@
             width: auto;
             margin-right: 5px;
         }
-
         .deposit-btn:hover {
             background: #45a049;
         }
-
         .order-actions {
             margin-top: 10px;
             text-align: right;
         }
-
         .cancel-btn {
             background: #f44336;
             padding: 5px 10px;
             font-size: 0.8em;
             width: auto;
         }
-
         .edit-btn {
             background: #ff9800;
             padding: 5px 10px;
@@ -86,27 +83,279 @@
             width: auto;
             margin-right: 5px;
         }
-.edit-btn:hover {
-    background: #e65100;
-}
-.cancel-btn:hover {
-    background: #d32f2f;
-}
+        .edit-btn:hover {
+            background: #e65100;
+        }
+        .cancel-btn:hover {
+            background: #d32f2f;
+        }
+        /* Стили для ордеров в стиле Bitget */
+        .orders-container {
+            margin-top: 20px;
+        }
+       
+        .orders-tabs {
+            display: flex;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 20px;
+        }
+       
+        .orders-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #666;
+            border-bottom: 2px solid transparent;
+        }
+       
+        .orders-tab.active {
+            color: #0088cc;
+            border-bottom: 2px solid #0088cc;
+        }
+       
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+       
+        .orders-table th {
+            text-align: left;
+            padding: 10px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .order-tab-content {
+            padding: 15px 0;
+        }
+        
+        .order-badge {
+            display: inline-block;
+            font-size: 0.7em;
+            margin-left: 5px;
+            padding: 2px 5px;
+            background: #2196f3;
+            color: white;
+            border-radius: 3px;
+        }
+       
+        .orders-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .orders-overview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 15px 0 25px;
+            align-items: stretch;
+        }
+
+        .orders-overview-card {
+            flex: 1 1 220px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .orders-overview-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .orders-overview-price {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: #0088cc;
+        }
+
+        .orders-overview-updated {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 6px;
+        }
+
+        .orders-overview-chart {
+            flex: 2 1 320px;
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            padding: 10px;
+        }
+
+        #ordersPriceChart {
+            width: 100%;
+            min-height: 220px;
+        }
+       
+        .orders-table tr:hover {
+            background: #f5f5f5;
+        }
+       
+        .side-long {
+            color: #4caf50;
+            font-weight: bold;
+        }
+       
+        .side-short {
+            color: #f44336;
+            font-weight: bold;
+        }
+       
+        .status-active, .status-unfunded, .status-waiting_entry {
+            color: #ff9800;
+            font-weight: bold;
+        }
+        
+        .status-opened {
+            color: #2196f3;
+            font-weight: bold;
+        }
+        
+        .status-executed {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .status-cancelled {
+            color: #9e9e9e;
+            font-weight: bold;
+        }
+       
+        .pnl-positive {
+            color: #4caf50;
+        }
+       
+        .pnl-negative {
+            color: #f44336;
+        }
+       
+        .order-actions button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+       
+        .edit-btn {
+            background: #ff9800;
+            color: white;
+        }
+       
+        .cancel-btn {
+            background: #f44336;
+            color: white;
+        }
+       
+        .deposit-btn {
+            background: #4caf50;
+            color: white;
+        }
+        
+        /* Стили для графика */
+        .price-chart-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        .chart-controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .chart-time-btn {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 0.75em;
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .chart-time-btn.active {
+            background: #0088cc;
+            color: white;
+            border-color: #0088cc;
+        }
+        
+        .chart-time-btn:hover {
+            background: #e0e0e0;
+        }
+        
+        .chart-time-btn.active:hover {
+            background: #006699;
+        }
+        
+        #priceChart {
+            max-height: 400px;
+        }
+        /* Дополнительные стили для вкладок ордеров */
+        .order-type-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .order-type-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-right: 5px;
+            border-radius: 5px 5px 0 0;
+            background: #f5f5f5;
+        }
+        
+        .order-type-tab.active {
+            background: #0088cc;
+            color: white;
+            border-color: #ddd;
+        }
+        
+        .order-form-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        
+        .order-form-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>💰 TON Обменник & Торговые Ордера</h1>
-        
+       
         <div class="tabs">
             <div class="tab active" data-tab="swap">🔄 Обмен</div>
             <div class="tab" data-tab="orders">📊 Ордера</div>
             <div class="tab" data-tab="wallet">👛 Кошелек ордеров</div>
         </div>
-        
+       
         <div id="wallet" class="hidden"></div>
         <button id="connectBtn">🔗 Подключить кошелёк</button>
-
         <!-- Вкладка обмена -->
         <div class="tab-content active" id="swap-tab">
             <form id="swapForm" class="hidden">
@@ -117,7 +366,7 @@
                         <option value="USDT">USDT</option>
                     </select>
                 </div>
-                
+               
                 <div class="form-group">
                     <label>Получаете:</label>
                     <select id="toToken">
@@ -125,13 +374,12 @@
                         <option value="TON">TON</option>
                     </select>
                 </div>
-                
+               
                 <div class="form-group">
                     <label>Сумма:</label>
                     <input type="number" id="amount" placeholder="0.0" step="0.01" min="0">
                     <div id="balance" class="balance"></div>
                 </div>
-
                 <div class="form-group">
                     <label>Допуск проскальзывания (Slippage):</label>
                     <div class="slippage-control">
@@ -143,118 +391,496 @@
                     </div>
                     <div class="balance">Минимальная сумма получения будет уменьшена на указанный процент</div>
                 </div>
-                
+               
                 <button type="button" id="getQuote">📊 Получить курс</button>
                 <div id="quote"></div>
+                <div id="currentPrice" class="quote-info" style="margin-top: 10px; display: none;">
+                    <strong>Текущий курс TON/USDT: <span id="priceValue">-</span> USDT</strong>
+                </div>
                 <button type="submit" id="swapBtn">🔄 Обменять</button>
             </form>
+            
+            <!-- График цены -->
+            <div class="price-chart-container">
+                <h3>📈 График цены TON-USDT</h3>
+                <div class="chart-controls">
+                    <button class="chart-time-btn active" data-minutes="0.5">30с</button>
+                    <button class="chart-time-btn" data-minutes="1">1м</button>
+                    <button class="chart-time-btn" data-minutes="5">5м</button>
+                    <button class="chart-time-btn" data-minutes="15">15м</button>
+                    <button class="chart-time-btn" data-minutes="30">30м</button>
+                    <button class="chart-time-btn" data-hours="1">1ч</button>
+                    <button class="chart-time-btn" data-hours="6">6ч</button>
+                    <button class="chart-time-btn" data-hours="24">24ч</button>
+                    <button class="chart-time-btn" data-hours="168">7д</button>
+                </div>
+                <canvas id="priceChart"></canvas>
+            </div>
         </div>
-
         <!-- Вкладка ордеров -->
         <div class="tab-content" id="orders-tab">
             <div class="hidden" id="ordersAuth">
                 <p>Подключите кошелёк чтобы работать с ордерами</p>
             </div>
-
             <div class="hidden" id="ordersInterface">
-                <h3>Создать новый ордер</h3>
-                <form id="orderForm">
-                    <div class="order-form">
-                        <div class="form-group">
-                            <label>Тип ордера:</label>
-                            <select id="orderType" required>
-                                <option value="long">LONG (Покупка)</option>
-                                <option value="short">SHORT (Продажа)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Пара:</label>
-                            <select id="orderPair" required>
-                                <option value="TON-USDT">TON-USDT</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group full-width">
-                            <label>Сумма (TON):</label>
-                            <input type="number" id="orderAmount" placeholder="0.0" step="0.01" min="0.1" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Цена входа (USDT):</label>
-                            <input type="number" id="entryPrice" placeholder="7.5" step="0.01" min="0.01" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Stop Loss (USDT):</label>
-                            <input type="number" id="stopLoss" placeholder="7.0" step="0.01" min="0.01">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Take Profit (USDT):</label>
-                            <input type="number" id="takeProfit" placeholder="8.0" step="0.01" min="0.01">
-                        </div>
-                    </div>
-                    
-                    <button type="submit" id="createOrderBtn">📈 Создать ордер</button>
-                </form>
+                <!-- Вкладки типов ордеров -->
+                <div class="order-type-tabs">
+                    <div class="order-type-tab active" data-order-type="simple">📊 Простой ордер</div>
+                    <div class="order-type-tab" data-order-type="advanced">⚙️ Расширенный</div>
+                    <div class="order-type-tab" data-order-type="oco">🔗 OCO ордер</div>
+                </div>
 
+                <div class="orders-overview">
+                    <div class="orders-overview-card">
+                        <div class="orders-overview-label">Текущий курс TON/USDT</div>
+                        <div class="orders-overview-price" id="ordersPriceValue">--</div>
+                        <div class="orders-overview-updated" id="ordersPriceUpdated">—</div>
+                    </div>
+                    <div class="orders-overview-chart">
+                        <canvas id="ordersPriceChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Простая форма (старая, для совместимости) -->
+                <div id="simple-order-form" class="order-tab-content active">
+                    <h3>Создать простой ордер</h3>
+                    <form id="orderForm">
+                        <div class="order-form">
+                            <div class="form-group">
+                                <label>Тип ордера:</label>
+                                <select id="orderType" required>
+                                    <option value="long">LONG (Покупка)</option>
+                                    <option value="short">SHORT (Продажа)</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Пара:</label>
+                                <select id="orderPair" required>
+                                    <option value="TON-USDT">TON-USDT</option>
+                                </select>
+                            </div>
+                        <div class="form-group full-width">
+                            <label>Кошелёк для ордера:</label>
+                            <select id="orderWalletSelect">
+                                <option value="">Загрузка...</option>
+                            </select>
+                            <div id="walletSelectHint" class="balance"></div>
+                        </div>
+                           
+                            <div class="form-group full-width">
+                                <label>Сумма (TON):</label>
+                                <input type="number" id="orderAmount" placeholder="0.0" step="0.01" min="0.1" required>
+                            </div>
+                           <!-- Добавьте этот блок после формы создания ордера -->
+                            <div id="orderFeeInfo" class="quote-info" style="display: none; margin-top: 15px;">
+                                <h4>💸 Комиссии и расходы</h4>
+                                <div class="fee-details">
+                                    <div class="fee-item">
+                                        <span>Комиссия обменника:</span>
+                                        <span id="exchangeFee">-</span>
+                                    </div>
+                                    <div class="fee-item">
+                                        <span>Сетевая комиссия (газ):</span>
+                                        <span id="gasFee">-</span>
+                                    </div>
+                                    <div class="fee-item total">
+                                        <span><strong>Итого к оплате:</strong></span>
+                                        <span id="totalCost">-</span>
+                                    </div>
+                                    <div class="fee-item">
+                                        <span>Чистая сумма получения:</span>
+                                        <span id="netAmount">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <style>
+                            .fee-item {
+                                display: flex;
+                                justify-content: space-between;
+                                margin-bottom: 5px;
+                                font-size: 0.9em;
+                            }
+                            .fee-item.total {
+                                border-top: 1px solid #ddd;
+                                padding-top: 5px;
+                                margin-top: 5px;
+                                font-weight: bold;
+                            }
+                            </style>
+
+                            <script>
+                            // Функция для расчета и отображения комиссий
+                            function calculateOrderFees(orderAmount, fromToken) {
+                                const exchangeFeePercent = 0.55; // 0.55% комиссия обменника
+                                const exchangeFee = orderAmount * (exchangeFeePercent / 100);
+
+                                // Газ в зависимости от направления
+                                let gasFee;
+                                gasFee = 0;
+
+                                const totalCost = fromToken === 'TON' ? 
+                                    (parseFloat(orderAmount) + gasFee).toFixed(6) + ' TON' : 
+                                    `${orderAmount} ${fromToken} + ${gasFee.toFixed(6)} TON`;
+
+                                const netAmount = (orderAmount - exchangeFee).toFixed(6);
+
+                                // Обновляем интерфейс
+                                document.getElementById('exchangeFee').textContent = `${exchangeFee.toFixed(6)} ${fromToken} (${exchangeFeePercent}%)`;
+                                document.getElementById('gasFee').textContent = `${gasFee.toFixed(6)} TON`;
+                                document.getElementById('totalCost').textContent = totalCost;
+                                document.getElementById('netAmount').textContent = `${netAmount} ${fromToken}`;
+
+                                // Показываем блок
+                                document.getElementById('orderFeeInfo').style.display = 'block';
+                            }
+
+                            // Обработчики для расчета комиссий при изменении суммы
+                            document.getElementById('orderAmount').addEventListener('input', function() {
+                                const amount = this.value;
+                                const fromToken = document.getElementById('orderType').value === 'long' ? 'USDT' : 'TON';
+                                if (amount && amount > 0) {
+                                    calculateOrderFees(parseFloat(amount), fromToken);
+                                } else {
+                                    document.getElementById('orderFeeInfo').style.display = 'none';
+                                }
+                            });
+
+                            document.getElementById('orderType').addEventListener('change', function() {
+                                const amount = document.getElementById('orderAmount').value;
+                                const fromToken = this.value === 'long' ? 'USDT' : 'TON';
+                                if (amount && amount > 0) {
+                                    calculateOrderFees(parseFloat(amount), fromToken);
+                                }
+                            });
+
+                            // Обновление информации о газе при создании ордера
+                            const originalOrderSubmit = document.getElementById('orderForm').onsubmit;
+                            document.getElementById('orderForm').onsubmit = async function(e) {
+                                e.preventDefault();
+
+                                // Показываем подробную информацию о комиссиях
+                                const orderType = document.getElementById('orderType').value;
+                                const amount = document.getElementById('orderAmount').value;
+                                const fromToken = orderType === 'long' ? 'USDT' : 'TON';
+
+                                if (amount && amount > 0) {
+                                    calculateOrderFees(parseFloat(amount), fromToken);
+                                }
+
+                                // Продолжаем оригинальную логику
+                                return originalOrderSubmit.call(this, e);
+                            };
+                            </script>
+                            <div class="form-group">
+                                <label>Цена входа (USDT):</label>
+                                <input type="number" id="entryPrice" placeholder="7.5" step="0.0001" min="0.0001" required>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Stop Loss (USDT):</label>
+                                <input type="number" id="stopLoss" placeholder="7.0" step="0.0001" min="0.0001">
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Take Profit (USDT):</label>
+                                <input type="number" id="takeProfit" placeholder="8.0" step="0.0001" min="0.0001">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Slippage (%)</label>
+                                <input type="number" id="orderSlippage" placeholder="1.0" value="1.0" step="0.1" min="0.1" max="20">
+                                <div class="balance">Используется при открытии и закрытии позиции</div>
+                            </div>
+                        </div>
+                       
+                        <button type="submit" id="createOrderBtn">📈 Создать ордер</button>
+                    </form>
+                </div>
+                
+                <!-- Расширенная форма -->
+                <div id="advanced-order-form" class="order-tab-content" style="display: none;">
+                    <h3>Создать расширенный ордер</h3>
+                    <form id="advancedOrderForm">
+                        <div class="order-form">
+                            <div class="form-group">
+                                <label>Тип ордера:</label>
+                                <select id="advancedOrderType" required>
+                                    <option value="LIMIT">Лимитный</option>
+                                    <option value="MARKET">Рыночный</option>
+                                    <option value="STOP_ENTRY">Стоп-вход</option>
+                                    <option value="STOP_LOSS">Стоп-лосс</option>
+                                    <option value="TAKE_PROFIT">Тейк-профит</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Сторона:</label>
+                                <select id="advancedSide" required>
+                                    <option value="LONG">LONG</option>
+                                    <option value="SHORT">SHORT</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Пара:</label>
+                                <select id="advancedPair" required>
+                                    <option value="TON-USDT">TON-USDT</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group full-width">
+                                <label>Количество:</label>
+                                <input type="number" id="advancedQuantity" placeholder="1.0" step="0.01" min="0.1" required>
+                            </div>
+                           
+                            <div class="form-group" id="limitPriceGroup">
+                                <label>Лимитная цена (USDT):</label>
+                                <input type="number" id="limitPrice" placeholder="7.5" step="0.01" min="0.01">
+                            </div>
+                           
+                            <div class="form-group" id="stopPriceGroup" style="display: none;">
+                                <label>Стоп-цена (USDT):</label>
+                                <input type="number" id="stopPrice" placeholder="7.0" step="0.01" min="0.01">
+                            </div>
+                           
+                            <div class="form-group" id="entryPriceGroup">
+                                <label>Цена входа (USDT):</label>
+                                <input type="number" id="advancedEntryPrice" placeholder="7.5" step="0.01" min="0.01">
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Stop Loss (USDT):</label>
+                                <input type="number" id="advancedStopLoss" placeholder="7.0" step="0.01" min="0.01">
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Take Profit (USDT):</label>
+                                <input type="number" id="advancedTakeProfit" placeholder="8.0" step="0.01" min="0.01">
+                            </div>
+                           
+                            <div class="form-group full-width" id="slippageGroup" style="display: none;">
+                                <label>Макс. проскальзывание (%):</label>
+                                <input type="number" id="maxSlippage" placeholder="0.5" step="0.1" min="0.1" max="10" value="0.5">
+                            </div>
+                           
+                            <div class="form-group full-width">
+                                <label>
+                                    <input type="checkbox" id="enableTrailing"> Включить трейлинг-стоп
+                                </label>
+                            </div>
+                           
+                            <div id="trailingConfig" style="display: none;">
+                                <div class="form-group">
+                                    <label>Тип трейлинга:</label>
+                                    <select id="trailingType">
+                                        <option value="FIXED">Фиксированный (пункты)</option>
+                                        <option value="PERCENTAGE">Процентный</option>
+                                    </select>
+                                </div>
+                               
+                                <div class="form-group">
+                                    <label>Дистанция:</label>
+                                    <input type="number" id="trailingDistance" placeholder="5.0" step="0.1" min="0.1">
+                                </div>
+                            </div>
+                        </div>
+                       
+                        <button type="submit" id="createAdvancedOrderBtn">📈 Создать ордер</button>
+                    </form>
+                </div>
+                
+                <!-- OCO форма -->
+                <div id="oco-order-form" class="order-tab-content" style="display: none;">
+                    <h3>Создать OCO ордер (Take Profit / Stop Loss)</h3>
+                    <form id="ocoOrderForm">
+                        <div class="order-form">
+                            <div class="form-group">
+                                <label>Сторона:</label>
+                                <select id="ocoSide" required>
+                                    <option value="LONG">LONG</option>
+                                    <option value="SHORT">SHORT</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Пара:</label>
+                                <select id="ocoPair" required>
+                                    <option value="TON-USDT">TON-USDT</option>
+                                </select>
+                            </div>
+                           
+                            <div class="form-group full-width">
+                                <label>Количество:</label>
+                                <input type="number" id="ocoQuantity" placeholder="1.0" step="0.01" min="0.1" required>
+                            </div>
+                           
+                            <div class="form-group">
+                                <label>Цена входа (USDT):</label>
+                                <input type="number" id="ocoEntryPrice" placeholder="7.5" step="0.01" min="0.01" required>
+                            </div>
+                           
+                            <h4 style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">Take Profit</h4>
+                           
+                            <div class="form-group">
+                                <label>TP Цена (USDT):</label>
+                                <input type="number" id="ocoTakeProfit" placeholder="8.0" step="0.01" min="0.01" required>
+                            </div>
+                           
+                            <h4 style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">Stop Loss</h4>
+                           
+                            <div class="form-group">
+                                <label>SL Цена (USDT):</label>
+                                <input type="number" id="ocoStopLoss" placeholder="7.0" step="0.01" min="0.01" required>
+                            </div>
+                        </div>
+                       
+                        <button type="submit" id="createOcoOrderBtn">🔗 Создать OCO ордер</button>
+                    </form>
+                </div>
                 <div class="orders-list">
-                    <h3>Активные ордера</h3>
-                    <div id="activeOrders"></div>
-                    
-                    <h3>История ордеров</h3>
-                    <div id="orderHistory"></div>
+                    <div class="orders-tabs">
+                        <div class="orders-tab active" data-orders-tab="active">Open Orders</div>
+                        <div class="orders-tab" data-orders-tab="history">Order History</div>
+                    </div>
+               
+                    <div id="activeOrders" class="orders-content active">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Pair</th>
+                                    <th>Side</th>
+                                    <th>Amount (TON)</th>
+                                    <th>Entry Price (USDT)</th>
+                                    <th>TP (USDT)</th>
+                                    <th>SL (USDT)</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeOrdersBody"></tbody>
+                        </table>
+                    </div>
+               
+                    <div id="orderHistory" class="orders-content" style="display: none;">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Pair</th>
+                                    <th>Side</th>
+                                    <th>Amount (TON)</th>
+                                    <th>Entry Price (USDT)</th>
+                                    <th>Exec Price (USDT)</th>
+                                    <th>PNL (USDT)</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderHistoryBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-
         <!-- Вкладка кошелька ордеров -->
         <div class="tab-content" id="wallet-tab">
             <div class="wallet-info">
-                <h3>👛 Кошелек для ордеров</h3>
-                <p><strong>Адрес:</strong> <span id="orderWalletAddress">Загрузка...</span></p>
-                <p><strong>Баланс:</strong> <span id="orderWalletBalance">0</span> TON</p>
-                <p class="balance">Этот кошелек используется для хранения средств ордеров. Мнемоника уже внесена в систему.</p>
+                <h3>👛 Кошельки для ордеров</h3>
+                <div id="orderWalletList"></div>
+                <button id="refreshWalletsBtn" style="margin-top:10px;">🔄 Обновить список</button>
             </div>
-            
             <div class="form-group">
-                <h4>Депозит для ордеров</h4>
-                <p>Переведите TON на указанный выше адрес для создания ордеров</p>
+                <h4>Добавить или импортировать кошелёк</h4>
+                <form id="importWalletForm">
+                    <input type="text" id="walletLabel" placeholder="Метка (необязательно)">
+                    <input type="text" id="walletAddressInput" placeholder="Адрес кошелька" required>
+                    <textarea id="walletMnemonicInput" placeholder="Мнемоника (необязательно)" rows="3"></textarea>
+                    <button type="submit">💾 Сохранить</button>
+                </form>
+            </div>
+            <div class="form-group">
+                <h4>Вывод TON</h4>
+                <form id="walletTransferForm">
+                    <input type="text" id="transferDestination" placeholder="Адрес получателя" required>
+                    <input type="number" id="transferAmount" placeholder="Сумма TON" min="0" step="0.01" required>
+                    <input type="text" id="transferComment" placeholder="Комментарий (опционально)">
+                    <button type="submit">📤 Отправить</button>
+                </form>
+            </div>
+            <div class="form-group">
+                <h4>Обмен из кошелька</h4>
+                <form id="walletSwapForm">
+                    <select id="walletSwapPair">
+                        <option value="TON-USDT">TON → USDT</option>
+                    </select>
+                    <select id="walletSwapSide">
+                        <option value="long">Покупка (TON→USDT)</option>
+                        <option value="short">Продажа (USDT→TON)</option>
+                    </select>
+                    <input type="number" id="walletSwapAmount" placeholder="Сумма" min="0" step="0.01" required>
+                    <input type="number" id="walletSwapSlippage" placeholder="Slippage %" value="1.0" step="0.1">
+                    <button type="submit">🔁 Обменять</button>
+                </form>
+            </div>
+            <div class="form-group">
+                <h4>Пулы ликвидности</h4>
+                <div id="liquidityPoolsList" class="balance"></div>
+                <form id="addPoolForm">
+                    <input type="text" id="poolPair" placeholder="Пара (TON-USDT)" required>
+                    <input type="text" id="poolDex" placeholder="DEX (DeDust/StonFi)" required>
+                    <input type="text" id="poolAddress" placeholder="Адрес пула" required>
+                    <input type="text" id="poolFromToken" placeholder="Из токена (TON)" required>
+                    <input type="text" id="poolToToken" placeholder="В токен (USDT)" required>
+                    <input type="text" id="poolFromTokenAddr" placeholder="Адрес токена FROM (опц.)">
+                    <input type="text" id="poolToTokenAddr" placeholder="Адрес токена TO (опц.)">
+                    <button type="submit">➕ Добавить пул</button>
+                </form>
             </div>
         </div>
-
         <div id="result"></div>
     </div>
-
     <script>
         let currentWallet = null;
         let tonConnectUI = null;
         let currentSlippage = 1.0;
         let orders = [];
-
+        let priceChart = null;
+        let ordersPriceChart = null;
+        let priceCharts = [];
+        let currentChartPeriod = { type: 'minutes', value: 0.5 }; // По умолчанию 30 секунд
+        let orderWallets = [];
+        let selectedOrderWalletId = null;
+        let latestMarketPrice = null;
+        let orderDefaultsInitialized = false;
         // Инициализация TON Connect
         function initTonConnect() {
             const manifestUrl = "https://raw.githubusercontent.com/Qazqazqaz2/cucaracha_2/main/tonconnect-manifest.json";
-            
+           
             tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
                 manifestUrl: manifestUrl,
                 buttonRootId: 'connectBtn'
             });
-
             tonConnectUI.connectionRestored.then(() => {
+                console.log('Connection restored, checking...');
+                checkConnection();
+            }).catch(err => {
+                console.log('No previous connection:', err);
                 checkConnection();
             });
-
             tonConnectUI.onStatusChange(wallet => {
-                currentWallet = wallet;
+                console.log('Status changed:', wallet);
+                if (wallet) {
+                    currentWallet = wallet;
+                }
                 checkConnection();
             });
         }
-        
+       
         function checkConnection() {
             const wallet = tonConnectUI.account;
-            if (wallet) {
+            if (wallet && wallet.address) {
                 currentWallet = wallet;
                 const shortAddress = wallet.address.slice(0, 8) + '...' + wallet.address.slice(-8);
                 document.getElementById('wallet').innerHTML = `✅ Подключён: ${shortAddress}`;
@@ -264,17 +890,23 @@
                 document.getElementById('ordersInterface').classList.remove('hidden');
                 document.getElementById('ordersAuth').classList.add('hidden');
                 updateBalance();
-                loadOrders();
-                loadOrderWalletInfo();
+                // Загружаем ордера с небольшой задержкой, чтобы убедиться, что currentWallet установлен
+                setTimeout(() => {
+                    loadOrders();
+                }, 100);
+                loadOrderWallets();
             } else {
+                currentWallet = null;
                 document.getElementById('wallet').classList.add('hidden');
                 document.getElementById('connectBtn').classList.remove('hidden');
                 document.getElementById('swapForm').classList.add('hidden');
                 document.getElementById('ordersInterface').classList.add('hidden');
                 document.getElementById('ordersAuth').classList.remove('hidden');
+                orders = [];
+                renderOrders();
+                loadOrderWallets();
             }
         }
-
         // Управление вкладками
         function setupTabs() {
             document.querySelectorAll('.tab').forEach(tab => {
@@ -282,12 +914,12 @@
                     // Деактивируем все вкладки
                     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                    
+                   
                     // Активируем выбранную
                     tab.classList.add('active');
                     const tabId = tab.dataset.tab + '-tab';
                     document.getElementById(tabId).classList.add('active');
-                    
+                   
                     // При переключении на ордера обновляем список
                     if (tab.dataset.tab === 'orders') {
                         loadOrders();
@@ -295,12 +927,11 @@
                 });
             });
         }
-
         // Управление slippage
         function setupSlippageControls() {
             const buttons = document.querySelectorAll('.slippage-btn');
             const customInput = document.getElementById('customSlippage');
-            
+           
             buttons.forEach(btn => {
                 btn.addEventListener('click', () => {
                     buttons.forEach(b => b.classList.remove('active'));
@@ -309,14 +940,14 @@
                     customInput.value = '';
                 });
             });
-            
+           
             customInput.addEventListener('input', () => {
                 if (customInput.value) {
                     buttons.forEach(b => b.classList.remove('active'));
                     currentSlippage = parseFloat(customInput.value);
                 }
             });
-            
+           
             customInput.addEventListener('blur', () => {
                 if (customInput.value) {
                     let value = parseFloat(customInput.value);
@@ -327,102 +958,219 @@
                 }
             });
         }
-
-        // Загрузка информации о кошельке ордеров
-        async function loadOrderWalletInfo() {
-            try {
-                const res = await fetch('/order-wallet');
-                const data = await res.json();
-                
-                if (data.address) {
-                    document.getElementById('orderWalletAddress').textContent = data.address;
-                    document.getElementById('orderWalletBalance').textContent = data.balance.toFixed(4);
-                }
-            } catch (error) {
-                console.error('Order wallet info error:', error);
-            }
-        }
-
-        // Загрузка ордеров
         async function loadOrders() {
-            if (!currentWallet) return;
+            // Проверяем currentWallet и tonConnectUI.account
+            const wallet = currentWallet || (tonConnectUI && tonConnectUI.account);
+            if (!wallet || !wallet.address) {
+                console.warn('Кошелёк не подключён, ордера не загружены');
+                orders = [];
+                renderOrders();
+                return;
+            }
             
+            console.log('Loading orders for wallet:', wallet.address);
+        
             try {
-                const res = await fetch('/orders');
+                const res = await fetch('/user-orders?user_wallet=' + encodeURIComponent(wallet.address));
+                if (!res.ok) {
+                    throw new Error(`HTTP error! Status: ${res.status}`);
+                }
                 const data = await res.json();
-                orders = data.orders || [];
-                displayOrders();
+                console.log('Loaded orders:', data.orders); // Добавьте это для отладки
+                orders = Array.isArray(data.orders) ? data.orders : [];
+                renderOrders();
             } catch (error) {
                 console.error('Load orders error:', error);
+                showResult('Ошибка загрузки ордеров: ' + error.message, 'error');
+                orders = [];
+                renderOrders();
             }
         }
 
-        // Отображение ордеров
-        async function displayOrders() {
-            const activeOrdersDiv = document.getElementById('activeOrders');
-            const historyDiv = document.getElementById('orderHistory');
-            // Получаем текущие цены для пар:
-            let prices = {};
+        async function loadOrderWallets() {
+            if (!currentWallet) {
+                orderWallets = [];
+                selectedOrderWalletId = null;
+                renderOrderWalletSelect();
+                renderWalletList();
+                return;
+            }
             try {
-                const res = await fetch('/quote', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({from_token: 'TON', to_token: 'USDT', amount: 1, slippage: 1})
-                });
-                const d = await res.json();
-                prices['TON-USDT'] = d.quote;
-            } catch {_=>{}}
-            const userOrders = orders.filter(order => order.user_wallet === currentWallet.address);
-            const activeOrders = userOrders.filter(order => order.status !== 'executed' && order.status !== 'cancelled');
-            const historyOrders = userOrders.filter(order => order.status === 'executed' || order.status === 'cancelled');
-            function renderOrder(order) {
-                let currentPrice = prices[order.pair] || order.entry_price;
-                const pnl = calculatePnL(order, currentPrice);
-                const comms = calculateComms(order);
-                        
-                return `
-                    <div class="order-item ${order.type}">
-                        <div class="order-header">
-                            <span class="order-type ${order.type}">${order.type.toUpperCase()}</span>
-                            <span class="order-status ${order.status}">${getStatusText(order.status)}</span>
-                        </div>
-                        <div class="order-details">
-                            <div><strong>Пара:</strong> ${order.pair}</div>
-                            <div><strong>Сумма:</strong> ${order.amount} TON</div>
-                            <div><strong>Вход:</strong> ${order.entry_price} USDT</div>
-                            <div><strong>Текущий курс:</strong> ${(+currentPrice).toFixed(4)} USDT</div>
-                            <div><strong>Stop Loss:</strong> ${order.stop_loss || 'Не установлен'}</div>
-                            <div><strong>Take Profit:</strong> ${order.take_profit || 'Не установлен'}</div>
-                            <div><strong>Потенц. Профит:</strong> <span style='color:${pnl>0?'#4caf50':'#f44336'}'>${pnl.toFixed(3)} USDT</span></div>
-                            <div><strong>Комиссия:</strong> ${comms.toFixed(4)} TON</div>
-                            <div><strong>Создан:</strong> ${new Date(order.created_at).toLocaleString()}</div>
-                        </div>
-
-                        <!-- ВСТАВЛЯЕМ ЗДЕСЬ БЛОК С КНОПКАМИ -->
-                        <div class="order-actions">
-                            ${order.status === 'unfunded' ? 
-                                `<button class="deposit-btn" onclick="depositOrder('${order.id}')">💳 Пополнить ордер</button>` 
-                                : ''}
-                            ${['active','unfunded'].includes(order.status) ? 
-                                `<button class="edit-btn" data-order='${JSON.stringify(order)}'>✏️ Редактировать</button>` 
-                                : ''}
-                            <button class="cancel-btn" onclick="cancelOrder('${order.id}')">❌ Отменить</button>
-                        </div>
-                    </div>
-                `;
+                const res = await fetch('/api/order-wallets?owner_wallet=' + encodeURIComponent(currentWallet.address));
+                const data = await res.json();
+                orderWallets = Array.isArray(data.wallets) ? data.wallets : [];
+                if (orderWallets.length > 0) {
+                    selectedOrderWalletId = orderWallets[0].id;
+                    renderOrderWalletSelect();
+                    renderWalletList();
+                    await loadWalletBalances(selectedOrderWalletId);
+                } else {
+                    selectedOrderWalletId = null;
+                    renderOrderWalletSelect();
+                    renderWalletList();
+                }
+            } catch (error) {
+                console.error('Load wallets error:', error);
             }
-            activeOrdersDiv.innerHTML = activeOrders.length ? activeOrders.map(renderOrder).join('') : '<p>Нет активных ордеров</p>';
-            historyDiv.innerHTML = historyOrders.length ? historyOrders.map(renderOrder).join('') : '<p>Нет истории ордеров</p>';
-            bindEditBtns();
         }
 
-        // Новый статус для unfunded
+        function renderOrderWalletSelect() {
+            const select = document.getElementById('orderWalletSelect');
+            const hint = document.getElementById('walletSelectHint');
+            if (!select) return;
+            select.innerHTML = '';
+            if (!orderWallets.length) {
+                select.innerHTML = '<option value="">Нет доступных кошельков</option>';
+                if (hint) hint.textContent = 'Добавьте кошелек во вкладке "Кошелек ордеров"';
+                return;
+            }
+            orderWallets.forEach(wallet => {
+                const option = document.createElement('option');
+                option.value = wallet.id;
+                option.textContent = `${wallet.label || wallet.address.slice(0,6) + '...'}`;
+                if (wallet.id === selectedOrderWalletId) option.selected = true;
+                select.appendChild(option);
+            });
+            if (hint) {
+                const selected = orderWallets.find(w => w.id === selectedOrderWalletId);
+                hint.textContent = selected ? `Выбран: ${selected.address}` : '';
+            }
+        }
+
+        function renderWalletList() {
+            const container = document.getElementById('orderWalletList');
+            if (!container) return;
+            if (!orderWallets.length) {
+                container.innerHTML = '<p>Нет сохраненных кошельков.</p>';
+                return;
+            }
+            container.innerHTML = '';
+            orderWallets.forEach(wallet => {
+                const div = document.createElement('div');
+                div.style.border = '1px solid #ddd';
+                div.style.padding = '10px';
+                div.style.marginBottom = '10px';
+                div.style.borderRadius = '6px';
+                div.innerHTML = `
+                    <strong>${wallet.label || 'Кошелек #' + wallet.id}</strong><br>
+                    <small>${wallet.address}</small><br>
+                    <small>${wallet.has_mnemonic ? '🔐 Мнемоника сохранена' : '⚠️ Нет мнемоники'}</small><br>
+                    <button data-wallet="${wallet.id}" class="wallet-select-btn">${wallet.id === selectedOrderWalletId ? '✔️ Выбран' : 'Выбрать'}</button>
+                    <button data-balance="${wallet.id}" class="wallet-balance-btn">Показать баланс</button>
+                    ${wallet.has_mnemonic ? '' : `<button data-add-mnemonic="${wallet.id}" class="wallet-add-mnemonic-btn">Добавить мнемонику</button>`}
+                    <button data-delete-wallet="${wallet.id}" class="wallet-delete-btn">Удалить</button>
+                    <div id="walletTokens-${wallet.id}" class="balance"></div>
+                `;
+                container.appendChild(div);
+            });
+            document.querySelectorAll('.wallet-select-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectedOrderWalletId = parseInt(btn.dataset.wallet);
+                    renderOrderWalletSelect();
+                    renderWalletList();
+                });
+            });
+            document.querySelectorAll('.wallet-balance-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const wid = parseInt(btn.dataset.balance);
+                    loadWalletBalances(wid);
+                });
+            });
+            document.querySelectorAll('.wallet-add-mnemonic-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const wid = parseInt(btn.dataset.addMnemonic);
+                    const phrase = prompt('Введите мнемонику для этого кошелька:');
+                    if (!phrase) return;
+                    try {
+                        const res = await fetch(`/api/order-wallets/${wid}/mnemonic`, {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({mnemonic: phrase})
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            showResult('Мнемоника сохранена', 'success');
+                            loadOrderWallets();
+                        } else {
+                            showResult('Ошибка: ' + (data.error || 'неизвестно'), 'error');
+                        }
+                    } catch (error) {
+                        showResult('Ошибка сохранения мнемоники', 'error');
+                    }
+                });
+            });
+            document.querySelectorAll('.wallet-delete-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const wid = parseInt(btn.dataset.deleteWallet);
+                    if (!confirm('Удалить этот кошелек?')) return;
+                    try {
+                        const res = await fetch(`/api/order-wallets/${wid}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if (data.success) {
+                            showResult('Кошелек удален', 'success');
+                            if (wid === selectedOrderWalletId) {
+                                selectedOrderWalletId = null;
+                            }
+                            loadOrderWallets();
+                        } else {
+                            showResult('Ошибка: ' + (data.error || 'неизвестно'), 'error');
+                        }
+                    } catch (error) {
+                        showResult('Ошибка удаления кошелька', 'error');
+                    }
+                });
+            });
+        }
+
+        async function loadWalletBalances(walletId) {
+            try {
+                const res = await fetch(`/api/order-wallets/${walletId}/balances`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const container = document.getElementById(`walletTokens-${walletId}`);
+                if (!container) return;
+                if (!data.tokens || !data.tokens.length) {
+                    container.textContent = 'Нет балансов';
+                    return;
+                }
+                container.innerHTML = data.tokens.map(t => `${t.symbol}: ${t.balance.toFixed(4)}`).join(' | ');
+            } catch (error) {
+                console.error('Balances error:', error);
+            }
+        }
+
+        async function loadPoolsList() {
+            const container = document.getElementById('liquidityPoolsList');
+            if (!container) return;
+            try {
+                const res = await fetch('/pools');
+                if (!res.ok) {
+                    container.textContent = 'Ошибка загрузки пулов';
+                    return;
+                }
+                const data = await res.json();
+                const entries = [];
+                Object.keys(data).forEach(pair => {
+                    const poolList = Array.isArray(data[pair]) ? data[pair] : [data[pair]];
+                    poolList.forEach(pool => {
+                        entries.push(`${pair} - ${pool.dex}: ${pool.address}`);
+                    });
+                });
+                container.innerHTML = entries.length ? entries.join('<br>') : 'Пулы не настроены';
+            } catch (error) {
+                container.textContent = 'Ошибка загрузки пулов';
+            }
+        }
+        // Статусы ордеров
         function getStatusText(status) {
             const statusMap = {
-                'unfunded': 'Ожидает пополнения',
-                'active': 'Активен',
-                'executed': 'Исполнен',
-                'cancelled': 'Отменён'
+                'unfunded': 'UNFUNDED',
+                'waiting_entry': 'WAITING ENTRY',
+                'opened': 'OPENED',
+                'active': 'ACTIVE',  // Для обратной совместимости
+                'executed': 'EXECUTED',
+                'execution_failed': 'EXECUTION FAILED',
+                'cancelled': 'CANCELLED'
             };
             return statusMap[status] || status;
         }
@@ -444,15 +1192,14 @@
             // 0.0025 + 0.003 = 0.0055 (0.55%) от суммы
             return order.amount ? order.amount * 0.0055 : 0;
         }
-
         // Отмена ордера
         async function cancelOrder(orderId) {
             if (!confirm('Вы уверены, что хотите отменить ордер?')) return;
-            
+           
             try {
                 const res = await fetch(`/orders/${orderId}`, { method: 'DELETE' });
                 const data = await res.json();
-                
+               
                 if (data.success) {
                     showResult('Ордер отменен', 'success');
                     loadOrders();
@@ -464,7 +1211,6 @@
                 showResult('Ошибка отмены ордера', 'error');
             }
         }
-
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
                 await tonConnectUI.openModal();
@@ -473,13 +1219,12 @@
                 showResult('Ошибка подключения: ' + error.message, 'error');
             }
         });
-
         async function updateBalance() {
             if (!currentWallet) return;
-            
+           
             const walletAddr = currentWallet.address;
             const fromToken = document.getElementById('fromToken').value;
-            
+           
             try {
                 const res = await fetch('/balance', {
                     method: 'POST',
@@ -487,7 +1232,7 @@
                     body: JSON.stringify({wallet_address: walletAddr, token: fromToken})
                 });
                 const data = await res.json();
-                
+               
                 const balanceDiv = document.getElementById('balance');
                 if (data.error) {
                     balanceDiv.innerHTML = `Ошибка: ${data.error}`;
@@ -498,73 +1243,79 @@
                 console.error('Balance error:', error);
             }
         }
-
         document.getElementById('getQuote').addEventListener('click', async () => {
             const fromToken = document.getElementById('fromToken').value;
             const toToken = document.getElementById('toToken').value;
             const amount = document.getElementById('amount').value;
-
             if (!amount || amount <= 0) {
                 showResult('Введите сумму для обмена', 'error');
                 return;
             }
-
             try {
                 const res = await fetch('/quote', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        from_token: fromToken, 
-                        to_token: toToken, 
+                        from_token: fromToken,
+                        to_token: toToken,
                         amount: amount,
                         slippage: currentSlippage
                     })
                 });
                 const data = await res.json();
-                
+               
                 const quoteDiv = document.getElementById('quote');
                 if (data.error) {
                     quoteDiv.innerHTML = `<div class="error">Ошибка: ${data.error}</div>`;
                 } else {
+                    const alt = (data.alternatives || []).map(q => `${q.dex}: ${q.quote.toFixed(4)}`).join(' | ');
                     quoteDiv.innerHTML = `
                         <div class="quote-info">
-                            <strong>Вы получите: ${data.formatted}</strong>
+                            <strong>Лучший курс (${data.dex}): ${data.formatted}</strong>
                             <div class="min-received">Минимум: ${data.min_output_formatted} (slippage: ${data.slippage}%)</div>
+                            ${alt ? `<div class="balance">Другие пулы: ${alt}</div>` : ''}
                         </div>
                     `;
                 }
+                
+                // Также обновляем текущую цену
+                updateCurrentPrice();
             } catch (error) {
                 console.error('Quote error:', error);
                 showResult('Ошибка получения курса', 'error');
             }
         });
-
         // Создание ордера
         document.getElementById('orderForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+           
             if (!currentWallet) {
                 showResult('Сначала подключите кошелёк', 'error');
                 return;
             }
-            
+            if (!selectedOrderWalletId) {
+                showResult('Выберите кошелёк для ордера', 'error');
+                return;
+            }
+           
             const orderType = document.getElementById('orderType').value;
             const pair = document.getElementById('orderPair').value;
             const amount = document.getElementById('orderAmount').value;
             const entryPrice = document.getElementById('entryPrice').value;
             const stopLoss = document.getElementById('stopLoss').value;
             const takeProfit = document.getElementById('takeProfit').value;
-            
+            const orderSlippageInput = document.getElementById('orderSlippage');
+            const orderSlippageValue = orderSlippageInput ? Math.max(0.1, parseFloat(orderSlippageInput.value) || 1) : 1;
+           
             if (!amount || amount <= 0) {
                 showResult('Введите сумму ордера', 'error');
                 return;
             }
-            
+           
             if (!entryPrice || entryPrice <= 0) {
                 showResult('Введите цену входа', 'error');
                 return;
             }
-
             try {
                 const res = await fetch('/orders', {
                     method: 'POST',
@@ -576,16 +1327,27 @@
                         entry_price: parseFloat(entryPrice),
                         stop_loss: stopLoss || null,
                         take_profit: takeProfit || null,
-                        user_wallet: currentWallet.address
+                        user_wallet: currentWallet.address,
+                        order_wallet_id: selectedOrderWalletId,
+                        slippage: orderSlippageValue
                     })
                 });
-                
+               
                 const data = await res.json();
-                
+               
                 if (data.success) {
                     let msg = `Ордер ${orderType.toUpperCase()} создан!`;
                     if (data.order.status === 'unfunded') {
-                        msg += `<br><b>Переведите <span style='color:#0088cc'>${data.order.amount} TON</span> на <span style='color:#006699'>${data.order.order_wallet}</span> для активации!</b>`;
+                        if (data.gas_info) {
+                            // Отображаем информацию о газе
+                            msg += `<br><b>Переведите <span style='color:#0088cc'>${data.gas_info.total_amount.toFixed(6)} TON</span> на <span style='color:#006699'>${data.order.order_wallet}</span> для активации!</b>`;
+                            msg += `<br><small>Включая газ: ${data.gas_info.gas_amount.toFixed(6)} TON</small>`;
+                        } else {
+                            msg += `<br><b>Переведите <span style='color:#0088cc'>${data.order.amount} TON</span> на <span style='color:#006699'>${data.order.order_wallet}</span> для активации!</b>`;
+                        }
+                    } else if (data.gas_info) {
+                        // Отображаем информацию о газе для активированных ордеров
+                        msg += `<br><small>Газ: ${data.gas_info.gas_amount.toFixed(6)} TON</small>`;
                     }
                     showResult(msg, 'success');
                     document.getElementById('orderForm').reset();
@@ -598,27 +1360,26 @@
                 showResult('Ошибка создания ордера', 'error');
             }
         });
-
         document.getElementById('swapForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+           
             if (!currentWallet) {
                 showResult('Сначала подключите кошелёк', 'error');
                 return;
             }
-        
+       
             const fromToken = document.getElementById('fromToken').value;
             const toToken = document.getElementById('toToken').value;
             const amount = document.getElementById('amount').value;
-        
+       
             if (!amount || amount <= 0) {
                 showResult('Введите сумму для обмена', 'error');
                 return;
             }
-        
+       
             try {
                 showResult('Подготовка транзакции...', 'loading');
-                
+               
                 const res = await fetch('/swap', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -631,14 +1392,14 @@
                     })
                 });
                 const data = await res.json();
-                
+               
                 if (data.error) {
                     showResult('Ошибка: ' + data.error, 'error');
                     return;
                 }
-            
+           
                 showResult('Подтвердите транзакцию в кошельке...', 'loading');
-                
+               
                 let message;
                 if (data.messages && Array.isArray(data.messages)) {
                     message = data.messages[0];
@@ -649,17 +1410,17 @@
                         payload: data.payload
                     };
                 }
-            
+           
                 const transaction = {
                     validUntil: data.validUntil || Math.floor(Date.now() / 1000) + 300,
                     messages: [message]
                 };
-            
+           
                 try {
                     const result = await tonConnectUI.sendTransaction(transaction);
                     showResult('Своп выполнен успешно!', 'success');
                     console.log("Transaction sent:", result);
-                    
+                   
                     setTimeout(updateBalance, 3000);
                 } catch (txError) {
                     console.error("Transaction failed:", txError);
@@ -669,35 +1430,418 @@
                         showResult('Ошибка: ' + txError.message, 'error');
                     }
                 }
-            
+           
             } catch (error) {
                 console.error('Swap error:', error);
                 showResult('Ошибка: ' + error.message, 'error');
             }
         });
-    
+   
         function showResult(message, type) {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = message;
             resultDiv.className = type ? (type === 'success' ? 'success' : type === 'loading' ? 'loading' : 'error') : '';
         }
-
         // Обновляем баланс при смене токена
         document.getElementById('fromToken').addEventListener('change', updateBalance);
+        const orderWalletSelect = document.getElementById('orderWalletSelect');
+        if (orderWalletSelect) {
+            orderWalletSelect.addEventListener('change', (e) => {
+                selectedOrderWalletId = parseInt(e.target.value);
+                renderWalletList();
+            });
+        }
 
+        const refreshWalletsBtn = document.getElementById('refreshWalletsBtn');
+        if (refreshWalletsBtn) {
+            refreshWalletsBtn.addEventListener('click', () => loadOrderWallets());
+        }
+
+        const importWalletForm = document.getElementById('importWalletForm');
+        if (importWalletForm) {
+            importWalletForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!currentWallet) {
+                    showResult('Сначала подключите кошелек', 'error');
+                    return;
+                }
+                try {
+                    const payload = {
+                        owner_wallet: currentWallet.address,
+                        label: document.getElementById('walletLabel').value,
+                        address: document.getElementById('walletAddressInput').value,
+                        mnemonic: document.getElementById('walletMnemonicInput').value
+                    };
+                    const res = await fetch('/api/order-wallets', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showResult('Кошелек сохранён', 'success');
+                        importWalletForm.reset();
+                        loadOrderWallets();
+                    } else {
+                        showResult('Ошибка: ' + (data.error || 'неизвестно'), 'error');
+                    }
+                } catch (error) {
+                    showResult('Ошибка добавления кошелька', 'error');
+                }
+            });
+        }
+
+        const walletTransferForm = document.getElementById('walletTransferForm');
+        if (walletTransferForm) {
+            walletTransferForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!selectedOrderWalletId) {
+                    showResult('Выберите кошелек', 'error');
+                    return;
+                }
+                const payload = {
+                    destination: document.getElementById('transferDestination').value,
+                    amount: document.getElementById('transferAmount').value,
+                    comment: document.getElementById('transferComment').value,
+                    token: 'TON'
+                };
+                try {
+                    const res = await fetch(`/api/order-wallets/${selectedOrderWalletId}/transfer`, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showResult('Перевод выполнен', 'success');
+                        walletTransferForm.reset();
+                        loadWalletBalances(selectedOrderWalletId);
+                    } else {
+                        showResult('Ошибка: ' + (data.message || data.error || 'неизвестно'), 'error');
+                    }
+                } catch (error) {
+                    showResult('Ошибка перевода', 'error');
+                }
+            });
+        }
+
+        const walletSwapForm = document.getElementById('walletSwapForm');
+        if (walletSwapForm) {
+            walletSwapForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!selectedOrderWalletId) {
+                    showResult('Выберите кошелек', 'error');
+                    return;
+                }
+                const payload = {
+                    pair: document.getElementById('walletSwapPair').value,
+                    type: document.getElementById('walletSwapSide').value,
+                    amount: document.getElementById('walletSwapAmount').value,
+                    slippage: document.getElementById('walletSwapSlippage').value
+                };
+                try {
+                    const res = await fetch(`/api/order-wallets/${selectedOrderWalletId}/swap`, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showResult('Своп из кошелька выполнен', 'success');
+                        loadWalletBalances(selectedOrderWalletId);
+                    } else {
+                        showResult('Ошибка: ' + (data.error || data.message || 'неизвестно'), 'error');
+                    }
+                } catch (error) {
+                    showResult('Ошибка свопа', 'error');
+                }
+            });
+        }
+
+        const addPoolForm = document.getElementById('addPoolForm');
+        if (addPoolForm) {
+            addPoolForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const payload = {
+                    pair: document.getElementById('poolPair').value,
+                    dex: document.getElementById('poolDex').value,
+                    address: document.getElementById('poolAddress').value,
+                    from_token: document.getElementById('poolFromToken').value,
+                    to_token: document.getElementById('poolToToken').value,
+                    from_token_address: document.getElementById('poolFromTokenAddr').value || null,
+                    to_token_address: document.getElementById('poolToTokenAddr').value || null
+                };
+                try {
+                    const res = await fetch('/api/pools', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showResult('Пул добавлен', 'success');
+                        addPoolForm.reset();
+                        loadPoolsList();
+                    } else {
+                        showResult('Ошибка: ' + (data.error || 'неизвестно'), 'error');
+                    }
+                } catch (error) {
+                    showResult('Ошибка добавления пула', 'error');
+                }
+            });
+        }
+        // Инициализация графиков цены
+        function createChartInstance(canvasId, labelText) {
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return null;
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: labelText,
+                        data: [],
+                        borderColor: '#0088cc',
+                        backgroundColor: 'rgba(0, 136, 204, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        spanGaps: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Цена: ' + context.parsed.y.toFixed(6) + ' USDT';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(6) + ' USDT';
+                                }
+                            }
+                        },
+                        x: {
+                            type: 'category',
+                            ticks: {
+                                maxTicksLimit: 20,
+                                autoSkip: true
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        function initPriceCharts() {
+            priceChart = createChartInstance('priceChart', 'Цена TON/USDT');
+            ordersPriceChart = createChartInstance('ordersPriceChart', 'TON/USDT (ордера)');
+            priceCharts = [priceChart, ordersPriceChart].filter(Boolean);
+            loadPriceHistory(currentChartPeriod);
+        }
+        
+        // Загрузка истории цен
+        async function loadPriceHistory(period) {
+            try {
+                let url = '/price-history?pool=TON-USDT';
+                if (period.type === 'minutes') {
+                    url += `&minutes=${period.value}`;
+                } else {
+                    url += `&hours=${period.value}`;
+                }
+                
+                const res = await fetch(url);
+                if (!res.ok) {
+                    throw new Error(`HTTP error! Status: ${res.status}`);
+                }
+                const data = await res.json();
+                
+                if (data.success && data.data && priceCharts.length) {
+                    const labels = data.data.labels || [];
+                    const prices = data.data.prices || [];
+                    
+                    if (labels.length === 0 || prices.length === 0) {
+                        console.warn('No price data available');
+                        return;
+                    }
+                    
+                    // Форматируем метки времени в зависимости от периода
+                    const formattedLabels = labels.map((label, index) => {
+                        try {
+                            const date = new Date(label);
+                            if (isNaN(date.getTime())) {
+                                return `Point ${index + 1}`;
+                            }
+                            
+                            const periodValue = period.type === 'minutes' ? period.value : (period.value * 60);
+                            
+                            // Форматируем дату в зависимости от периода
+                            if (periodValue <= 1) {
+                                // 30 сек - 1 мин: показываем секунды
+                                return date.toLocaleTimeString('ru-RU', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    second: '2-digit'
+                                });
+                            } else if (periodValue <= 30) {
+                                // До 30 минут: показываем минуты и секунды
+                                return date.toLocaleTimeString('ru-RU', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    second: '2-digit'
+                                });
+                            } else if (periodValue <= 360) {
+                                // До 6 часов: показываем часы и минуты
+                                return date.toLocaleTimeString('ru-RU', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                });
+                            } else if (periodValue <= 1440) {
+                                // До 24 часов: показываем дату и время
+                                return date.toLocaleString('ru-RU', { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                });
+                            } else {
+                                // Больше суток: показываем дату
+                                return date.toLocaleDateString('ru-RU', { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit'
+                                });
+                            }
+                        } catch (e) {
+                            return `Point ${index + 1}`;
+                        }
+                    });
+                    
+                    // Обновляем labels и данные - важно синхронизировать их
+                    // Убеждаемся, что количество точек данных соответствует labels
+                    priceCharts.forEach(chart => {
+                        if (!chart) return;
+                        if (formattedLabels.length === prices.length) {
+                            chart.data.labels = formattedLabels;
+                            chart.data.datasets[0].data = prices;
+                        } else {
+                            console.warn('Labels and prices length mismatch:', formattedLabels.length, prices.length);
+                            chart.data.labels = formattedLabels;
+                            chart.data.datasets[0].data = prices.slice(0, formattedLabels.length);
+                        }
+                        chart.update('none');
+                    });
+                }
+            } catch (error) {
+                console.error('Load price history error:', error);
+            }
+        }
+        
+        // Настройка кнопок времени для графика
+        function setupChartControls() {
+            document.querySelectorAll('.chart-time-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.chart-time-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Определяем тип периода
+                    if (this.dataset.minutes) {
+                        currentChartPeriod = { type: 'minutes', value: parseFloat(this.dataset.minutes) };
+                    } else if (this.dataset.hours) {
+                        currentChartPeriod = { type: 'hours', value: parseInt(this.dataset.hours) };
+                    }
+                    
+                    loadPriceHistory(currentChartPeriod);
+                });
+            });
+        }
+        
         // Инициализация
         initTonConnect();
         setupSlippageControls();
         setupTabs();
+        initPriceCharts();
+        setupChartControls();
+        loadPoolsList();
+        loadOrderWallets();
         
         // Автообновление ордеров каждые 30 секунд
         setInterval(() => {
             if (currentWallet) {
                 loadOrders();
-                loadOrderWalletInfo();
+                loadOrderWallets();
             }
         }, 30000);
-
+        
+        // Функция обновления текущей цены
+        async function updateCurrentPrice() {
+            try {
+                const res = await fetch('/current-price?pool=TON-USDT');
+                if (!res.ok) return;
+                
+                const data = await res.json();
+                if (data.success && data.price) {
+                    latestMarketPrice = data.price;
+                    const priceElement = document.getElementById('priceValue');
+                    const priceContainer = document.getElementById('currentPrice');
+                    const ordersPriceElement = document.getElementById('ordersPriceValue');
+                    const ordersPriceUpdatedEl = document.getElementById('ordersPriceUpdated');
+                    const bestQuote = (data.quotes || []).reduce((best, quote) => {
+                        if (!quote || typeof quote.price !== 'number') return best;
+                        if (!best || quote.price > best.price) return quote;
+                        return best;
+                    }, null);
+                    if (priceElement && priceContainer) {
+                        const priceText = `${data.price.toFixed(4)}${bestQuote ? ' (' + bestQuote.dex + ')' : ''}`;
+                        priceElement.textContent = priceText;
+                        priceContainer.style.display = 'block';
+                    }
+                    if (ordersPriceElement) {
+                        ordersPriceElement.textContent = `${data.price.toFixed(4)} USDT${bestQuote ? ' · ' + bestQuote.dex : ''}`;
+                    }
+                    if (ordersPriceUpdatedEl) {
+                        ordersPriceUpdatedEl.textContent = `Обновлено ${new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit', second: '2-digit'})}`;
+                    }
+                    if (!orderDefaultsInitialized && typeof window.setOrderDefaultsFromPrice === 'function') {
+                        window.setOrderDefaultsFromPrice(latestMarketPrice);
+                        orderDefaultsInitialized = true;
+                    }
+                }
+            } catch (error) {
+                console.error('Update current price error:', error);
+            }
+        }
+        
+        // Автообновление графика и цены каждые 2 секунды
+        setInterval(() => {
+            loadPriceHistory(currentChartPeriod);
+            updateCurrentPrice();
+        }, 2000);
+        
+        // Обновляем цену сразу при загрузке
+        updateCurrentPrice();
         function bindEditBtns() {
             document.querySelectorAll('.edit-btn').forEach(btn => {
                 btn.onclick = () => {
@@ -741,15 +1885,157 @@
               }
             }
         }
+                // Функция для переключения вкладок ордеров
+        document.querySelectorAll('.orders-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.orders-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                document.querySelectorAll('.orders-content').forEach(c => c.style.display = 'none');
+                
+                // Правильные ID элементов
+                const tabName = this.dataset.ordersTab;
+                let targetId;
+                if (tabName === 'active') {
+                    targetId = 'activeOrders';
+                } else if (tabName === 'history') {
+                    targetId = 'orderHistory';
+                }
+                
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {
+                    targetElement.style.display = 'block';
+                } else {
+                    console.error(`Element with id "${targetId}" not found`);
+                }
+            });
+        });
+        // Обновлённая функция рендеринга ордеров
+        function renderOrders() {
+            console.log('Total orders to render:', orders.length);
+
+            const activeBody = document.getElementById('activeOrdersBody');
+            const historyBody = document.getElementById('orderHistoryBody');
+            activeBody.innerHTML = '';
+            historyBody.innerHTML = '';
+
+            const formatAmount = (value) => {
+                if (value === null || value === undefined || value === '') return '0.00';
+                const num = Number(value);
+                return isNaN(num) ? '0.00' : num.toFixed(2);
+            };
+
+            const formatPrice = (value) => {
+                if (value === null || value === undefined || value === '') return '-';
+                const num = Number(value);
+                return isNaN(num) ? '-' : num.toFixed(4);
+            };
+                
+            console.log('Rendering orders:', orders); // Для отладки
+                
+            // Активные ордера - unfunded, waiting_entry, opened (не executed, не cancelled)
+            const activeOrders = orders.filter(o => {
+                const status = o.status;
+                return status === 'unfunded' || status === 'waiting_entry' || status === 'opened' || status === 'active';
+            });
+            
+            // История - executed, execution_failed и cancelled
+            const historyOrders = orders.filter(o => {
+                const status = o.status;
+                const isHistory = status === 'executed' || status === 'execution_failed' || status === 'cancelled';
+                if (!isHistory && (o.executed_at || o.cancelled_at)) {
+                    // Логируем ордера, которые имеют executed_at или cancelled_at, но статус не соответствует
+                    console.warn('Order with wrong status in history filter:', {
+                        id: o.id,
+                        status: status,
+                        executed_at: o.executed_at,
+                        cancelled_at: o.cancelled_at
+                    });
+                }
+                return isHistory;
+            });
+                
+            console.log('Active orders:', activeOrders.length, activeOrders); // Для отладки
+            console.log('History orders:', historyOrders.length, historyOrders); // Для отладки
+                
+            // Рендеринг активных ордеров
+            activeOrders.forEach(order => {
+                const row = document.createElement('tr');
+                const sideClass = order.type === 'long' ? 'side-long' : 'side-short';
+                const statusClass = `status-${order.status}`;
+                const date = new Date(order.created_at).toLocaleString();
+            
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${order.pair}</td>
+                    <td class="${sideClass}">${order.type.toUpperCase()}</td>
+                    <td>${formatAmount(order.amount)}</td>
+                    <td>${formatPrice(order.entry_price)}</td>
+                    <td>${formatPrice(order.take_profit)}</td>
+                    <td>${formatPrice(order.stop_loss)}</td>
+                    <td class="${statusClass}">${getStatusText(order.status)}</td>
+                    <td class="order-actions">
+                        ${order.status === 'unfunded' ? 
+                            `<button class="deposit-btn" onclick="depositOrder('${order.id}')">Deposit</button>` : ''}
+                        ${(order.status === 'unfunded' || order.status === 'waiting_entry' || order.status === 'opened' || order.status === 'active') ? 
+                            `<button class="edit-btn" onclick="editOrder('${order.id}')">Edit</button>` : ''}
+                        ${(order.status === 'unfunded' || order.status === 'waiting_entry' || order.status === 'opened' || order.status === 'active') ? 
+                            `<button class="cancel-btn" onclick="cancelOrder('${order.id}')">Cancel</button>` : ''}
+                    </td>
+                `;
+                activeBody.appendChild(row);
+            });
+        
+            // Рендеринг истории ордеров
+            historyOrders.forEach(order => {
+                const row = document.createElement('tr');
+                const sideClass = order.type === 'long' ? 'side-long' : 'side-short';
+                const statusClass = `status-${order.status}`;
+                const pnlValue = order.pnl != null ? parseFloat(order.pnl) : 0;
+                const pnlClass = pnlValue > 0 ? 'pnl-positive' : (pnlValue < 0 ? 'pnl-negative' : '');
+                const date = new Date(order.created_at).toLocaleString();
+                const execDate = order.executed_at ? new Date(order.executed_at).toLocaleString() : '-';
+                
+                // Для execution_failed показываем ошибку
+                const statusText = getStatusText(order.status);
+                const errorInfo = order.status === 'execution_failed' && order.execution_error ? 
+                    ` (${order.execution_error})` : '';
+            
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${order.pair}</td>
+                    <td class="${sideClass}">${order.type.toUpperCase()}</td>
+                    <td>${formatAmount(order.amount)}</td>
+                    <td>${formatPrice(order.entry_price)}</td>
+                    <td>${formatPrice(order.execution_price)}</td>
+                    <td class="${pnlClass}">${pnlValue.toFixed(2)}</td>
+                    <td class="${statusClass}">${statusText}${errorInfo} ${order.execution_type ? `(${order.execution_type})` : ''}</td>
+                `;
+                historyBody.appendChild(row);
+            });
+        
+            if (activeOrders.length === 0) {
+                activeBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;">No open orders</td></tr>';
+            }
+            if (historyOrders.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No order history</td></tr>';
+            }
+        }
+
+        async function editOrder(orderId) {
+            // Находим ордер для редактирования
+            const order = orders.find(o => o.id === orderId);
+            if (order) {
+                showEditModal(order);
+            }
+        }
         async function depositOrder(orderId) {
             if (!currentWallet) {
                 showResult('Сначала подключите кошелёк', 'error');
                 return;
             }
-        
+       
             try {
                 showResult('Подготовка транзакции пополнения...', 'loading');
-
                 const res = await fetch('/deposit-order', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -757,28 +2043,21 @@
                         order_id: orderId
                     })
                 });
-
                 const data = await res.json();
-
                 if (data.error) {
                     showResult('Ошибка: ' + data.error, 'error');
                     return;
                 }
-
                 showResult('Подтвердите транзакцию пополнения в кошельке...', 'loading');
-
                 try {
                     const result = await tonConnectUI.sendTransaction({
                         validUntil: data.validUntil,
                         messages: data.messages
                     });
-
                     showResult('Ордер успешно пополнен! Статус обновится через несколько секунд.', 'success');
                     console.log("Deposit transaction sent:", result);
-
                     // Обновляем список ордеров через 5 секунд
                     setTimeout(loadOrders, 5000);
-
                 } catch (txError) {
                     console.error("Deposit transaction failed:", txError);
                     if (txError.message?.includes('rejected') || txError.message?.includes('declined')) {
@@ -787,11 +2066,483 @@
                         showResult('Ошибка пополнения: ' + txError.message, 'error');
                     }
                 }
-
             } catch (error) {
                 console.error('Deposit error:', error);
                 showResult('Ошибка: ' + error.message, 'error');
             }
+        }
+                // Range слайдеры для TP/SL
+        function setupOrderSliders() {
+            const orderType = document.getElementById('orderType');
+            const entryPrice = document.getElementById('entryPrice');
+            const stopLoss = document.getElementById('stopLoss');
+            const takeProfit = document.getElementById('takeProfit');
+               
+            if (!stopLoss || !takeProfit || !orderType || !entryPrice) {
+                console.warn('Элементы формы ордера не найдены. Возможно, вкладка не загружена.');
+                return; // Не продолжать, если элементы null
+            }
+            // Создаем контейнеры для слайдеров
+            const stopLossGroup = stopLoss.parentNode;
+            const takeProfitGroup = takeProfit.parentNode;
+            // Добавляем range слайдеры
+            stopLossGroup.innerHTML = `
+                <label>Stop Loss (USDT):</label>
+                <input type="range" id="stopLossRange" min="0" max="20" step="0.0001" class="slider">
+                <input type="number" id="stopLoss" placeholder="7.0" step="0.0001" min="0.0001">
+                <div class="slider-value" id="stopLossValue">7.0 USDT</div>
+            `;
+            takeProfitGroup.innerHTML = `
+                <label>Take Profit (USDT):</label>
+                <input type="range" id="takeProfitRange" min="0" max="20" step="0.0001" class="slider">
+                <input type="number" id="takeProfit" placeholder="8.0" step="0.0001" min="0.0001">
+                <div class="slider-value" id="takeProfitValue">8.0 USDT</div>
+            `;
+            const stopLossRange = document.getElementById('stopLossRange');
+            const takeProfitRange = document.getElementById('takeProfitRange');
+            const stopLossInput = document.getElementById('stopLoss');
+            const takeProfitInput = document.getElementById('takeProfit');
+            const stopLossValue = document.getElementById('stopLossValue');
+            const takeProfitValue = document.getElementById('takeProfitValue');
+            entryPrice.step = '0.0001';
+            
+            // Функция обновления ограничений слайдеров
+            function updateSliderLimits() {
+                const type = orderType.value;
+                const entry = parseFloat(entryPrice.value) || 0;
+                if (entry > 0) {
+                    const sliderStep = Math.max(0.0001, parseFloat((entry * 0.001).toFixed(4)));
+                    stopLossRange.step = sliderStep;
+                    takeProfitRange.step = sliderStep;
+                    stopLossInput.step = '0.0001';
+                    takeProfitInput.step = '0.0001';
+                    if (type === 'long') {
+                        // Для LONG: SL <= Entry, TP >= Entry
+                        stopLossRange.max = entry;
+                        stopLossRange.min = Math.max(0, entry * 0.5); // Минимум 50% от entry
+                        takeProfitRange.min = entry;
+                        takeProfitRange.max = entry * 2; // Максимум 200% от entry
+                        // Устанавливаем разумные значения по умолчанию
+                        if (!stopLossInput.value) {
+                            const slValue = (entry * 0.9).toFixed(4); // -10% от entry
+                            stopLossRange.value = slValue;
+                            stopLossInput.value = slValue;
+                            stopLossValue.textContent = `${slValue} USDT`;
+                        }
+                        if (!takeProfitInput.value) {
+                            const tpValue = (entry * 1.1).toFixed(4); // +10% от entry
+                            takeProfitRange.value = tpValue;
+                            takeProfitInput.value = tpValue;
+                            takeProfitValue.textContent = `${tpValue} USDT`;
+                        }
+                    } else if (type === 'short') {
+                        // Для SHORT: SL >= Entry, TP <= Entry
+                        stopLossRange.min = entry;
+                        stopLossRange.max = entry * 2;
+                        takeProfitRange.max = entry;
+                        takeProfitRange.min = Math.max(0, entry * 0.5);
+                        // Устанавливаем разумные значения по умолчанию
+                        if (!stopLossInput.value) {
+                            const slValue = (entry * 1.1).toFixed(4); // +10% от entry
+                            stopLossRange.value = slValue;
+                            stopLossInput.value = slValue;
+                            stopLossValue.textContent = `${slValue} USDT`;
+                        }
+                        if (!takeProfitInput.value) {
+                            const tpValue = (entry * 0.9).toFixed(4); // -10% от entry
+                            takeProfitRange.value = tpValue;
+                            takeProfitInput.value = tpValue;
+                            takeProfitValue.textContent = `${tpValue} USDT`;
+                        }
+                    }
+                }
+            }
+            // Связывание range и number inputs
+            function setupSliderBinding(rangeEl, inputEl, valueEl) {
+                rangeEl.addEventListener('input', function() {
+                    inputEl.value = this.value;
+                    valueEl.textContent = `${this.value} USDT`;
+                });
+                inputEl.addEventListener('input', function() {
+                    let value = parseFloat(this.value) || 0;
+                    const min = parseFloat(rangeEl.min);
+                    const max = parseFloat(rangeEl.max);
+                    // Ограничиваем значение в пределах слайдера
+                    value = Math.max(min, Math.min(max, value));
+                    this.value = value.toFixed(4);
+                    rangeEl.value = value.toFixed(4);
+                    valueEl.textContent = `${value.toFixed(4)} USDT`;
+                });
+            }
+            // Настройка связывания
+            setupSliderBinding(stopLossRange, stopLossInput, stopLossValue);
+            setupSliderBinding(takeProfitRange, takeProfitInput, takeProfitValue);
+            // Обновляем ограничения при изменении типа ордера или цены входа
+            orderType.addEventListener('change', updateSliderLimits);
+            entryPrice.addEventListener('input', updateSliderLimits);
+            // Инициализация при загрузке
+            updateSliderLimits();
+
+            window.updateOrderSliderLimits = updateSliderLimits;
+            window.setOrderDefaultsFromPrice = function(price) {
+                if (!price || price <= 0) return;
+                entryPrice.value = parseFloat(price).toFixed(4);
+                const type = orderType.value;
+                const slMultiplier = type === 'long' ? 0.9 : 1.1;
+                const tpMultiplier = type === 'long' ? 1.1 : 0.9;
+                stopLossInput.value = (price * slMultiplier).toFixed(4);
+                takeProfitInput.value = (price * tpMultiplier).toFixed(4);
+                stopLossRange.value = stopLossInput.value;
+                takeProfitRange.value = takeProfitInput.value;
+                stopLossValue.textContent = `${stopLossInput.value} USDT`;
+                takeProfitValue.textContent = `${takeProfitInput.value} USDT`;
+                updateSliderLimits();
+            };
+        }
+        // Добавьте этот CSS
+        const sliderStyles = `
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #ddd;
+            outline: none;
+            margin: 10px 0;
+        }
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #0088cc;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #0088cc;
+            cursor: pointer;
+            border: none;
+        }
+        .slider-value {
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+        `;
+        // Добавляем стили в документ
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = sliderStyles;
+        document.head.appendChild(styleSheet);
+        // Новая функция для настройки вкладок типов ордеров
+        function setupOrderTypeTabs() {
+            document.querySelectorAll('.order-type-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Деактивируем все вкладки типов ордеров
+                    document.querySelectorAll('.order-type-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.order-tab-content').forEach(c => {
+                        c.classList.remove('active');
+                        c.style.display = 'none';
+                    });
+                
+                    // Активируем выбранную
+                    this.classList.add('active');
+                    const orderType = this.dataset.orderType;
+                    const targetId = orderType + '-order-form';
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        target.classList.add('active');
+                        target.style.display = 'block';
+                    }
+                });
+            });
+        }
+
+        // Обновленная функция для настройки вкладок форм ордеров
+        function setupOrderFormTabs() {
+            document.querySelectorAll('[data-order-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Деактивируем все вкладки
+                    document.querySelectorAll('[data-order-tab]').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.order-tab-content').forEach(c => {
+                        c.style.display = 'none';
+                        c.classList.remove('active');
+                    });
+                    
+                    // Активируем выбранную
+                    this.classList.add('active');
+                    const tabId = this.dataset.orderTab;
+                    const targetId = tabId === 'simple' ? 'simple-order-form' : 
+                                   tabId === 'advanced' ? 'advanced-order-form' : 
+                                   'oco-order-form';
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        target.style.display = 'block';
+                        target.classList.add('active');
+                    }
+                });
+            });
+        }
+
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            setupOrderSliders();
+            setupAdvancedOrderForm();
+            setupOcoOrderForm();
+            setupOrderFormTabs();
+            setupOrderTypeTabs();
+            if (latestMarketPrice && typeof window.setOrderDefaultsFromPrice === 'function' && !orderDefaultsInitialized) {
+                window.setOrderDefaultsFromPrice(latestMarketPrice);
+                orderDefaultsInitialized = true;
+            }
+        });
+        
+
+        
+        // Настройка расширенной формы
+        function setupAdvancedOrderForm() {
+            const orderTypeSelect = document.getElementById('advancedOrderType');
+            const enableTrailing = document.getElementById('enableTrailing');
+            const trailingConfig = document.getElementById('trailingConfig');
+            const slippageGroup = document.getElementById('slippageGroup');
+            const stopPriceGroup = document.getElementById('stopPriceGroup');
+            const limitPriceGroup = document.getElementById('limitPriceGroup');
+            
+            // Показываем/скрываем поля в зависимости от типа ордера
+            if (orderTypeSelect) {
+                orderTypeSelect.addEventListener('change', function() {
+                    const type = this.value;
+                    
+                    // Для рыночных ордеров показываем проскальзывание
+                    if (type === 'MARKET') {
+                        slippageGroup.style.display = 'block';
+                        limitPriceGroup.style.display = 'block';
+                        limitPriceGroup.querySelector('label').textContent = 'Макс. цена (USDT):';
+                    } else {
+                        slippageGroup.style.display = 'none';
+                    }
+                    
+                    // Для стоп-ордеров показываем стоп-цену
+                    if (type === 'STOP_ENTRY' || type === 'STOP_LOSS' || type === 'TAKE_PROFIT') {
+                        stopPriceGroup.style.display = 'block';
+                        limitPriceGroup.style.display = 'none';
+                    } else if (type === 'LIMIT') {
+                        stopPriceGroup.style.display = 'none';
+                        limitPriceGroup.style.display = 'block';
+                        limitPriceGroup.querySelector('label').textContent = 'Лимитная цена (USDT):';
+                    } else {
+                        stopPriceGroup.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Показываем/скрываем конфигурацию трейлинга
+            if (enableTrailing) {
+                enableTrailing.addEventListener('change', function() {
+                    trailingConfig.style.display = this.checked ? 'block' : 'none';
+                });
+            }
+            
+            // Обработка отправки расширенной формы
+            const form = document.getElementById('advancedOrderForm');
+            if (form) {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    if (!currentWallet) {
+                        showResult('Сначала подключите кошелёк', 'error');
+                        return;
+                    }
+                    
+                    const orderData = {
+                        symbol: document.getElementById('advancedPair').value,
+                        quantity: parseFloat(document.getElementById('advancedQuantity').value),
+                        order_type: document.getElementById('advancedOrderType').value,
+                        side: document.getElementById('advancedSide').value,
+                        user_wallet: currentWallet.address,
+                        limit_price: document.getElementById('limitPrice').value ? parseFloat(document.getElementById('limitPrice').value) : null,
+                        stop_price: document.getElementById('stopPrice').value ? parseFloat(document.getElementById('stopPrice').value) : null,
+                        entry_price: document.getElementById('advancedEntryPrice').value ? parseFloat(document.getElementById('advancedEntryPrice').value) : null,
+                        stop_loss: document.getElementById('advancedStopLoss').value ? parseFloat(document.getElementById('advancedStopLoss').value) : null,
+                        take_profit: document.getElementById('advancedTakeProfit').value ? parseFloat(document.getElementById('advancedTakeProfit').value) : null,
+                        max_slippage: document.getElementById('maxSlippage').value ? parseFloat(document.getElementById('maxSlippage').value) : 0.5
+                    };
+                    
+                    // Добавляем трейлинг-стоп если включен
+                    if (enableTrailing && enableTrailing.checked) {
+                        orderData.trailing_type = document.getElementById('trailingType').value;
+                        orderData.trailing_distance = parseFloat(document.getElementById('trailingDistance').value);
+                    }
+                    
+                    try {
+                        const res = await fetch('/api/orders/create', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(orderData)
+                        });
+                        
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            let msg = `Ордер ${data.order.id} создан успешно!`;
+                            if (data.gas_info) {
+                                // Отображаем информацию о газе
+                                msg += `<br><small>Газ: ${data.gas_info.gas_amount.toFixed(6)} TON, Всего: ${data.gas_info.total_amount.toFixed(6)} TON</small>`;
+                            }
+                            showResult(msg, 'success');
+                            form.reset();
+                            loadOrders();
+                        } else {
+                            showResult('Ошибка: ' + data.error, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Create advanced order error:', error);
+                        showResult('Ошибка создания ордера', 'error');
+                    }
+                });
+            }
+        }
+        
+        // Настройка OCO формы
+        function setupOcoOrderForm() {
+            const form = document.getElementById('ocoOrderForm');
+            if (form) {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    if (!currentWallet) {
+                        showResult('Сначала подключите кошелёк', 'error');
+                        return;
+                    }
+                    
+                    const side = document.getElementById('ocoSide').value;
+                    const pair = document.getElementById('ocoPair').value;
+                    const quantity = parseFloat(document.getElementById('ocoQuantity').value);
+                    const entryPrice = parseFloat(document.getElementById('ocoEntryPrice').value);
+                    const tpPrice = parseFloat(document.getElementById('ocoTakeProfit').value);
+                    const slPrice = parseFloat(document.getElementById('ocoStopLoss').value);
+                    
+                    const ocoData = {
+                        tp_order: {
+                            symbol: pair,
+                            quantity: quantity,
+                            side: side,
+                            take_profit: tpPrice,
+                            entry_price: entryPrice
+                        },
+                        sl_order: {
+                            symbol: pair,
+                            quantity: quantity,
+                            side: side,
+                            stop_loss: slPrice,
+                            entry_price: entryPrice
+                        }
+                    };
+                    
+                    try {
+                        const res = await fetch('/api/orders/oco', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(ocoData)
+                        });
+                        
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            let msg = `OCO ордер создан! Группа: ${data.oco_group_id}`;
+                            if (data.gas_info) {
+                                // Отображаем информацию о газе
+                                msg += `<br><small>Газ: ${data.gas_info.gas_amount.toFixed(6)} TON, Всего: ${data.gas_info.total_amount.toFixed(6)} TON</small>`;
+                            }
+                            showResult(msg, 'success');
+                            form.reset();
+                            loadOrders();
+                        } else {
+                            showResult('Ошибка: ' + data.error, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Create OCO order error:', error);
+                        showResult('Ошибка создания OCO ордера', 'error');
+                    }
+                });
+            }
+        }
+        
+        // Функция для установки трейлинг-стопа
+        async function setTrailingStop(orderId) {
+            const order = orders.find(o => o.id === orderId);
+            if (!order) {
+                showResult('Ордер не найден', 'error');
+                return;
+            }
+            
+            const trailingType = prompt('Тип трейлинга:\n1 - Фиксированный (пункты)\n2 - Процентный', '1');
+            if (!trailingType) return;
+            
+            const distance = prompt('Дистанция:', '5.0');
+            if (!distance) return;
+            
+            try {
+                const res = await fetch(`/api/orders/${orderId}/trailing`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        trailing_type: trailingType === '1' ? 'FIXED' : 'PERCENTAGE',
+                        trailing_distance: parseFloat(distance)
+                    })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showResult('Трейлинг-стоп установлен!', 'success');
+                    loadOrders();
+                } else {
+                    showResult('Ошибка: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Set trailing stop error:', error);
+                showResult('Ошибка установки трейлинг-стопа', 'error');
+            }
+        }
+        
+        // Обновляем рендеринг для добавления кнопки трейлинга
+        const originalRenderOrders = window.renderOrders;
+        if (originalRenderOrders) {
+            window.renderOrders = function() {
+                originalRenderOrders();
+                
+                // Добавляем кнопки для установки трейлинг-стопа
+                setTimeout(() => {
+                    const activeBody = document.getElementById('activeOrdersBody');
+                    if (activeBody) {
+                        activeBody.querySelectorAll('tr').forEach(row => {
+                            const buttons = row.querySelectorAll('button');
+                            if (buttons.length > 0) {
+                                const orderId = buttons[0].onclick?.toString().match(/'([^']+)'/)?.[1] ||
+                                             buttons[0].getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+                                if (orderId) {
+                                    const order = orders.find(o => o.id === orderId);
+                                    if (order && !order.trailing_type && 
+                                        (order.status === 'opened' || order.status === 'waiting_entry' || order.status === 'active')) {
+                                        // Добавляем кнопку для установки трейлинга если его еще нет
+                                        const actionsCell = row.querySelector('.order-actions');
+                                        if (actionsCell && !actionsCell.querySelector('.trailing-btn')) {
+                                            const trailingBtn = document.createElement('button');
+                                            trailingBtn.className = 'trailing-btn';
+                                            trailingBtn.style.cssText = 'background: #ff9800; color: white; padding: 5px 10px; font-size: 0.8em; width: auto; margin-right: 5px;';
+                                            trailingBtn.textContent = 'Trailing';
+                                            trailingBtn.onclick = () => setTrailingStop(orderId);
+                                            actionsCell.insertBefore(trailingBtn, actionsCell.firstChild);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }, 100);
+            };
         }
     </script>
 </body>

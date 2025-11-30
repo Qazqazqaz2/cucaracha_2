@@ -15,6 +15,7 @@ import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 from cryptography.fernet import Fernet
+
 # Импорты из новых модулей
 from ton_rpc import (
     get_balance,
@@ -35,9 +36,15 @@ from stonfi import (
     create_deposit_payload as stonfi_create_deposit_payload,
     STONFI_GAS_AMOUNT
 )
-from order_executor import execute_order_swap, transfer_ton_from_wallet
+from order_executor import execute_order_swap, transfer_ton_from_wallet, calculate_order_gas_requirements, calculate_order_gas_requirements
+
 load_dotenv()
 app = Flask(__name__)
+
+# Register API routes
+from api.routes import register_all_routes
+register_all_routes(app)
+
 POOLS_FILE = os.environ.get("POOLS_FILE", "pools.json")
 ORDERS_FILE = os.environ.get("ORDERS_FILE", "orders.json")
 # Конфиг
@@ -160,6 +167,7 @@ def pick_pool_by_targets(pair: str, targets: List[float]) -> Optional[dict]:
             best_score = score
             best_pool = pool
     return best_pool or candidates[0]
+
 def compute_swap_quote(pool: dict, amount: float, slippage: float):
     try:
         from_decimals = pool.get('from_decimals', 9)
@@ -350,7 +358,6 @@ def get_order_wallet_credentials(order: dict) -> Optional[dict]:
     if encrypted:
         try:
             credentials['mnemonic'] = decrypt_secret(encrypted)
-            print(f"[КОШЕЛЬКИ] Успешно расшифрована мнемоника для кошелька {wallet_info['address']}")
         except Exception as e:
             print(f"[КОШЕЛЬКИ] Ошибка расшифровки мнемоники: {e}")
             # Fallback to environment variable
@@ -1040,6 +1047,8 @@ def balance():
             return jsonify({'balance': 0})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
 @app.route('/quote', methods=['POST'])
 def quote():
     data = request.json
@@ -1320,6 +1329,12 @@ def create_order():
             # Removed: if take_profit and current_price <= take_profit: ...
         else:
             return jsonify({'error': 'Неверный тип ордера'}), 400
+        # Рассчитываем газ и комиссию для ордера
+        primary_pool = get_primary_pool(pair)
+        gas_info = {}
+        if primary_pool:
+            gas_info = calculate_order_gas_requirements(order, primary_pool)
+        
         if save_order(order):
             print(f"[АПИ] Ордер {order_id} успешно сохранён")
             # Проверяем, что ордер действительно сохранен
@@ -1330,13 +1345,28 @@ def create_order():
                     check_orders_execution()
                 except Exception as e:
                     print(f"[АПИ] Не удалось выполнить моментальную проверку ордеров: {e}")
-            return jsonify({
+            response_data = {
                 'success': True,
                 'order': order,
                 'message': message,
                 'available_balance': available_balance,
                 'required': required_for_new_order
-            })
+            }
+            # Добавляем информацию о газе, если она доступна
+            if gas_info.get('success'):
+                response_data['gas_info'] = {
+                    'gas_amount': gas_info['gas_amount'],
+                    'total_amount': gas_info['total_amount'],
+                    'from_token': gas_info['from_token'],
+                    'to_token': gas_info['to_token'],
+                    'from_amount': gas_info['from_amount'],
+                    'expected_output': gas_info['expected_output'],
+                    'dex': gas_info['dex']
+                }
+                # Обновляем сообщение с информацией о газе
+                if order['status'] == 'unfunded':
+                    response_data['message'] = f"Ордер создан. Переведите {gas_info['total_amount']:.6f} TON на {order_wallet_address} для активации (включая газ {gas_info['gas_amount']:.6f} TON)!"
+            return jsonify(response_data)
         else:
             print(f"[АПИ] Ошибка при сохранении ордера {order_id}")
             return jsonify({'error': 'Ошибка сохранения ордера'}), 500
@@ -1846,6 +1876,7 @@ def get_price_history():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+
 # Новые API endpoints для расширенной системы ордеров
 @app.route('/api/orders/create', methods=['POST'])
 def create_advanced_order():
@@ -1895,11 +1926,39 @@ def create_advanced_order():
         if wallet_id:
             order.order_wallet_id = wallet_id
         
-        return jsonify({
+        # Рассчитываем газ и комиссию для ордера
+        gas_info = {}
+        pair_pools = get_pair_pools(order.symbol)
+        if pair_pools:
+            primary_pool = pair_pools[0]
+            # Создаем временную структуру для расчета газа
+            temp_order = {
+                'amount': float(order.quantity),
+                'type': order.type.value.lower(),
+                'max_slippage': float(order.max_slippage),
+                'order_wallet': order.order_wallet
+            }
+            gas_info = calculate_order_gas_requirements(temp_order, primary_pool)
+        
+        response_data = {
             'success': True,
             'order': order.to_dict(),
             'message': f'Order {order.id} created successfully'
-        })
+        }
+        
+        # Добавляем информацию о газе, если она доступна
+        if gas_info.get('success'):
+            response_data['gas_info'] = {
+                'gas_amount': gas_info['gas_amount'],
+                'total_amount': gas_info['total_amount'],
+                'from_token': gas_info['from_token'],
+                'to_token': gas_info['to_token'],
+                'from_amount': gas_info['from_amount'],
+                'expected_output': gas_info['expected_output'],
+                'dex': gas_info['dex']
+            }
+        
+        return jsonify(response_data)
     except Exception as e:
         print(f"[АПИ] Ошибка создания ордера: {e}")
         traceback.print_exc()
@@ -1924,13 +1983,41 @@ def create_oco_order():
         # Создаем OCO пару
         tp_order, sl_order = engine.create_oco_order(tp_data, sl_data)
         
-        return jsonify({
+        # Рассчитываем газ и комиссию для ордера
+        gas_info = {}
+        pair_pools = get_pair_pools(tp_order.symbol)
+        if pair_pools:
+            primary_pool = pair_pools[0]
+            # Создаем временную структуру для расчета газа
+            temp_order = {
+                'amount': float(tp_order.quantity),
+                'type': tp_order.type.value.lower(),
+                'max_slippage': float(tp_order.max_slippage),
+                'order_wallet': tp_order.order_wallet
+            }
+            gas_info = calculate_order_gas_requirements(temp_order, primary_pool)
+        
+        response_data = {
             'success': True,
             'tp_order': tp_order.to_dict(),
             'sl_order': sl_order.to_dict(),
             'oco_group_id': tp_order.oco_group_id,
             'message': 'OCO order pair created successfully'
-        })
+        }
+        
+        # Добавляем информацию о газе, если она доступна
+        if gas_info.get('success'):
+            response_data['gas_info'] = {
+                'gas_amount': gas_info['gas_amount'],
+                'total_amount': gas_info['total_amount'],
+                'from_token': gas_info['from_token'],
+                'to_token': gas_info['to_token'],
+                'from_amount': gas_info['from_amount'],
+                'expected_output': gas_info['expected_output'],
+                'dex': gas_info['dex']
+            }
+        
+        return jsonify(response_data)
     except Exception as e:
         print(f"[АПИ] Ошибка создания OCO ордера: {e}")
         traceback.print_exc()
